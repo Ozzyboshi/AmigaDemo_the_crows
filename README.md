@@ -26,4 +26,37 @@ For example, assuming this palette:
 When the banner overlays the bleeding man's hair whe have bitplane 1 = 1, bitplanes from 2 to 4 = 0 and the fifth bitplane (the banner text) = 1, so we get this binary sequence:
 "10001" that in decimal is 17.
 - If the text is not overlaying, with the same calculation we get "00001" (decimal 1), so in both cases the black color is used, as a result, the bleeding man's hair will always be on top.
-- If the text overlays an empty region of the bleeding man (where there is transparency), color 16 is used.
+- If the text overlays an empty region of the bleeding man (where there is a transparency), color 16 is used.
+
+You will notice that the skull will scroll horizontally from left to right and back and not vertically.This is because the sprites share their color palette with the playfields from color 17 to 31.
+In the code you will find this instruction: 
+```
+  dc.w 	$4a07,$FFFE	; WAIT - wait for line 4a (under the skull sprite)
+```
+so, above line 4a the palette contains the apprpriate skull colors white gray black, below the forementioned palette duplication is restored.
+
+#### Dual playfield mode
+The dual playfield mode version of this demo is very neat and clean.
+Palette duplication trickery is no more necessary since we can assign a dedicated palette for the foreground bleeding man and another distinct palette for the background banner.
+Unfortunately we only have 3 bitplanes for each playfield, this means we have to decrease the palette of the bleeding man from 16 to 8 (7 colors and one reserved for transparency).
+On the other hand we unlock more colors for the banner colors, we now have up to 7 colors to play with and make some nice color transitions.
+Another benefit of the dual playfield mode is that now we have palette space for the skull sprite which is now free to move anywere without changing his own color.
+
+#### Blitter
+Each versions of this demo use the blitter to animate the skull's jaw.
+The banner scrolling routine act also like a timer chaning the skull image each time the playfield reach the top or the bottom of the screen.
+
+#### Skull movements
+The skull movements coordinates are always precalculated and stored at TABX and TABY address.
+In the single playfile mode version only TABX is used since the sprite must say always at the top of the screen.
+In the dual playfield mode he skull follows a parabolic curve with is f(x) = 1/500X^2+1/50X^+1  with X>=60 and X<=320.
+
+#### Assets and code
+All the assets (art pictures and music) provided with this demo are stored under the directory asset and were created by Stefano Briccolani.
+The assembly code, written by me, is strongly inspired from the Ramjam italian course freely downloadable at
+http://corsodiassembler.ramjam.it/
+
+#### Future
+Despite the simplicity of this demo, it can be useful for learning puroposes and as a base code for a much complex one.
+Planning in the future to add more features, probably adding some blood dropping from the skull's mouth or something similar.This will probably require more complex blittering techniques.
+
