@@ -59,6 +59,16 @@ All the assets (art pictures and music) provided with this demo are stored under
 The assembly code, written by me, is strongly inspired from the Ramjam italian course freely downloadable at
 http://corsodiassembler.ramjam.it/
 
+#### Demo running
+There are a lot of ways to run this demo:
+- Open the_crows.s (or the_crows_dual_pf) for the dual playfield version) in your devpac assembler and assemble/run it.
+- Run directly the_crows (or the_crows_dual_pf) executable file from your workbench double clicking on it.
+- Write directly the adf files that you find under https://github.com/Ozzyboshi/AmigaDemo_the_crows/releases on a real or emulated floppy disk and boot from it.
+
+The demos has been writtend and tested on a real Amiga 600 with 2Mb of Chip ram and 2Mb of PCMCIA Fast ram but it really whould work in all classic Amigas.
+
+Additional tests were made on a Aca500+ mounted on a real A500+ with kickstart 3.1 , no problem were found with this configuration either.
+
 #### Future
 Despite the simplicity of this demo, it can be useful for learning puroposes and as a base code for a much complex one.
 Planning in the future to add more features, probably adding some blood dropping from the skull's mouth or something similar.This will probably require more complex blittering techniques.
