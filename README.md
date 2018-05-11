@@ -52,7 +52,7 @@ The banner scrolling routine act also like a timer chaning the skull image each 
 #### Skull movements
 The skull movements coordinates are always precalculated and stored at TABX and TABY address.
 In the single playfile mode version only TABX is used since the sprite must say always at the top of the screen.
-In the dual playfield mode he skull follows a parabolic curve with is f(x) = 1/500X^2+1/50X^+1  with X>=60 and X<=320.
+In the dual playfield mode he skull follows a parabolic curve with is f(x) = (1/500)X^2+(1/50)X+1  with X>=60 and X<=320.
 
 #### Assets and code
 All the assets (art pictures and music) provided with this demo are stored under the directory asset and were created by Stefano Briccolani.
@@ -68,6 +68,8 @@ There are a lot of ways to run this demo:
 The demos has been writtend and tested on a real Amiga 600 with 2Mb of Chip ram and 2Mb of PCMCIA Fast ram but it really whould work in all classic Amigas.
 
 Additional tests were made on a Aca500+ mounted on a real A500+ with kickstart 3.1 , no problem were found with this configuration either.
+
+If you own a vampire you'll probably run the demo faster than expected, try disabling cache memory to run it properly.
 
 #### Future
 Despite the simplicity of this demo, it can be useful for learning puroposes and as a base code for a much complex one.
