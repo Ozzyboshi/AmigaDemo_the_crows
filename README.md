@@ -47,7 +47,8 @@ with
 ```
 dc.w	$104,$0039
 ```
-This is an illegal priority value for dff104 (BPLCON2) on bits PF2P, but will force color 16 to be printed on NON AGA Machines with 5 bitplanes activated for the one bites on the fifth bitplane.
+This is an illegal priority value for dff104 (BPLCON2) on bits PF2P, but will force color 16 to be printed for each turned on bit in the fifth bitplane no matter what's on the previously 4.
+This hack works only on NON AGA Machines with 5 bitplanes activated.
 
 #### Dual playfield mode
 The dual playfield mode version of this demo is very neat and clean.
