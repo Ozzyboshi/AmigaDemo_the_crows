@@ -38,6 +38,17 @@ In the code you will find this instruction:
 ```
 so, above line 4a the palette contains the apprpriate skull colors white gray black, below the forementioned palette duplication is restored.
 
+If you want to print the banner on top of the bleeding man instead of behind there is a very interesting undocumented feature that lets you do it very easily.
+Just change this instruction
+```
+dc.w	$104,$0009
+```
+with
+```
+dc.w	$104,$0039
+```
+This is an illegal priority value for dff104 (BPLCON2) on bits PF2P, but will force color 16 to be prented on NON AGA Machines with 5 bitplanes activated for the one bites on the fifth bitplane.
+
 #### Dual playfield mode
 The dual playfield mode version of this demo is very neat and clean.
 Palette duplication trickery is no more necessary since we can assign a dedicated palette for the foreground bleeding man and another distinct palette for the background banner.
