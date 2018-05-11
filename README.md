@@ -57,21 +57,21 @@ Unfortunately we only have 3 bitplanes for each playfield, this means we have to
 On the other hand we unlock more colors for the banner colors, we now have up to 7 colors to play with and make some nice color transitions.
 Another benefit of the dual playfield mode is that now we have palette space for the skull sprite which is now free to move anywere without changing his own color.
 
-#### Blitter
+### Blitter
 Each versions of this demo use the blitter to animate the skull's jaw.
 The banner scrolling routine act also like a timer chaning the skull image each time the playfield reach the top or the bottom of the screen.
 
-#### Skull movements
+### Skull movements
 The skull movements coordinates are always precalculated and stored at TABX and TABY address.
 In the single playfile mode version only TABX is used since the sprite must say always at the top of the screen.
 In the dual playfield mode he skull follows a parabolic curve with is f(x) = (1/500)X^2+(1/50)X+1  with X>=60 and X<=320.
 
-#### Assets and code
+### Assets and code
 All the assets (art pictures and music) provided with this demo are stored under the directory asset and were created by Stefano Briccolani.
 The assembly code, written by me, is strongly inspired from the Ramjam italian course freely downloadable at
 http://corsodiassembler.ramjam.it/
 
-#### Demo running
+### Demo running
 There are a lot of ways to run this demo:
 - Open the_crows.s (or the_crows_dual_pf) for the dual playfield version) in your devpac assembler and assemble/run it.
 - Run directly the_crows (or the_crows_dual_pf) executable file from your workbench double clicking on it.
@@ -83,7 +83,7 @@ Additional tests were made on a Aca500+ mounted on a real A500+ with kickstart 3
 
 If you own a vampire you'll probably run the demo faster than expected, try disabling cache memory to run it properly.
 
-#### Future
+### Future
 Despite the simplicity of this demo, it can be useful for learning puroposes and as a base code for a much complex one.
 Planning in the future to add more features, probably adding some blood dropping from the skull's mouth or something similar.This will probably require more complex blittering techniques.
 
