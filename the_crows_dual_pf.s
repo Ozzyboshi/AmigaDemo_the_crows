@@ -3,7 +3,10 @@
 	INCLUDE "exec/exec_lib.i"
     	INCLUDE "graphics/graphics_lib.i"
     	
+    	
 	SECTION MAINCODE,CODE
+	
+	;include "DaWorkBench.s"
 
 DISABLE	MACRO
 	LINKLIB _LVODisable,_AbsExecBase
@@ -63,8 +66,59 @@ BLTCPY MACRO
         move.l \2,$dff054     ; BLTDPT - Destination
         move.w \4,$dff058 ; BLTSIZE
         ENDM
-
-
+        
+BLTCPY2 MACRO
+        btst #6,$dff002
+\3
+        btst #6,$dff002
+        bne.s \3
+        move.w #$FFFF,$dff044 ; BLTAFWM - Blitter first word mask for source A
+        move.w #$FFFF,$dff046 ; BLTALWM - Blitter last word mask for source A
+        move.w #$09f0,$dff040 ; BLTCON0 - Use A D DMA Channels
+        move.w #$0000,$dff042 ; BLTCON1
+        ;move.w #120-2,$dff064 ; BLTAMOD
+        move.w #0,$dff064
+        move.w #40-2,$dff066 ; BLTDMOD
+        move.l \1,$dff050     ; BLTAPT - Data Source
+        move.l \2,$dff054     ; BLTDPT - Destination
+        move.w \4,$dff058 ; BLTSIZE
+        ENDM
+        
+PRINT_EYES_TOP_RIGHT MACRO
+	move.l #$cf9e377f,LEFTSKULLEYES1
+	move.l #$afde57ff,LEFTSKULLEYES2
+	move.l #$7cf1fbee,RIGHTSKULLEYES1
+	move.l #$7ef1ffee,RIGHTSKULLEYES2
+	ENDM
+	
+PRINT_EYES_TOP_LEFT MACRO
+	move.l #$cf3e37df,LEFTSKULLEYES1
+	move.l #$af7e57ff,LEFTSKULLEYES2
+	move.l #$79f1feee,RIGHTSKULLEYES1
+	move.l #$7bf1ffee,RIGHTSKULLEYES2
+	ENDM
+	
+PRINT_EYES_BOTTOM_LEFT MACRO
+	move.l #$cf7e37ff,LEFTSKULLEYES1
+	move.l #$af3e57df,LEFTSKULLEYES2
+	move.l #$7bf1ffee,RIGHTSKULLEYES1
+	move.l #$79f1feee,RIGHTSKULLEYES2
+	ENDM
+	
+PRINT_EYES_BOTTOM_RIGHT MACRO
+	move.l #$cfde37ff,LEFTSKULLEYES1
+	move.l #$af9e577f,LEFTSKULLEYES2
+	move.l #$7ef1ffee,RIGHTSKULLEYES1
+	move.l #$7cf1ffee,RIGHTSKULLEYES2
+	ENDM
+	
+LOAD_OLD_SPRITE_POS MACRO
+	MOVE.L	\1,A0
+	subq #2,a0
+	moveq	#0,d0
+	move.w  (a0),\2
+	ENDM
+	
 _AbsExecBase EQU 4
  
 START
@@ -111,14 +165,14 @@ POINTBP
 
 	; Start Sprite init (the skull)
 	; Sprite 0 init
-	MOVE.L	#MYSPRITE2,d0		
+	MOVE.L	#LEFTSKULL,d0		
 	LEA	SpritePointers,a1	; SpritePointers is in copperlist
 	move.w	d0,6(a1)
 	swap	d0
 	move.w	d0,2(a1)
 
 	; Sprite 1 init (right side of sprite 0)	
-	MOVE.L	#MYSPRITE3,d0		
+	MOVE.L	#RIGHTSKULL,d0		
 	addq.w	#8,a1
 	move.w	d0,6(a1)
 	swap	d0
@@ -134,13 +188,19 @@ POINTBP
 	move.w #$83a0,$dff096
 
 	bsr.w   mt_init ; init music
-		
 mouse	
 	WAITVEND mouse; Wait for 255th row
 	
 	bsr.w MoveSprite ; Move the skull sprite on the X axis
 	bsr.w MoveSpriteY ; Move the skull sprite on the Y Axis	
-	bsr.w MuoviCopper ; Move the background banner up and down
+	bsr.w MoveSpriteEyes ; Move the skull sprite eyes according to
+			     ; the screen position
+
+	
+	;move.w	#$511,COLORS+2; Uncomment to enable background flash
+	bsr.w MoveBanner ; Move the background banner up and down
+	bsr.w PrintChar   ; Print a new character every 16 shifts
+	bsr.w MoveText    ; Move the text from left to right
 	bsr.w mt_music
 	
 vwait	WAITVEND vwait
@@ -158,7 +218,133 @@ lclick	btst #6,$bfe001
 	ENABLE
 	clr.l d0
 	rts
+	
+MoveSpriteEyes
+	;cmp.b #64+84,LEFTSKULLHSTART
+	LOAD_OLD_SPRITE_POS TABXPOINT(PC),d0
+	cmp.w SKULLCURRENTXPOSITION,d0
+	bhi.s PrintLeftEyes
+	
+	LOAD_OLD_SPRITE_POS TABYPOINT(PC),d0
+	cmp.w SKULLCURRENTYPOSITION,d0
+	bhi.s PrintTopRightEyes
+	
+	; Print skull's eyes pointing to bottom right
+	PRINT_EYES_BOTTOM_RIGHT 
+	bra.w MoveSpriteEyesEnd
 
+; Print skull's eyes pointing to top right	
+PrintTopRightEyes
+	PRINT_EYES_TOP_RIGHT
+	bra.s MoveSpriteEyesEnd
+
+PrintLeftEyes
+	LOAD_OLD_SPRITE_POS TABYPOINT(PC),d0
+	cmp.w SKULLCURRENTYPOSITION,d0
+	bhi.s PrintTopLeftEyes
+	PRINT_EYES_BOTTOM_LEFT
+	bra.s MoveSpriteEyesEnd
+	
+; Print skull's eyes pointing to top left
+PrintTopLeftEyes
+	PRINT_EYES_TOP_LEFT
+	;bra.s MoveSpriteEyesEnd			  
+
+MoveSpriteEyesEnd
+	rts
+	
+	
+; Routine to print a a character on the first bitplane
+PrintChar
+	subq.w #1,printcharcounter ; We perform this routine only after
+	bne.w	noprint		   ; we shifted the text 16 times to make
+				   ; some space for the new character on the
+				   ; screen, to do this we use a counter
+	
+	; if we are here we must print a new character, so we reset the
+	; counter to 16
+	move.w	#16,printcharcounter
+	
+	move.l charaddress,a0 ; Load address to the char to print in a0
+	addq.l #1,charaddress ; next time we will point at the next char
+	moveq #0,d2	 ; Clean d2
+	move.b (a0),d2	 ; Copy character pointed by a0 in d2
+	bne.s noreset	 ; if we are pointing a 0 character we are at the end
+			 ; in this case we start over from the beginning
+	
+	; start of reset section (return to the first character)
+	lea TEXT(pc),a0
+	move.l #TEXT,charaddress
+	move.b (a0),d2
+	addq.l #1,charaddress
+	;end of reset section
+	
+noreset		 
+	sub.b #$20,d2	 ; Subtract 32 decimal because font file starts with
+			 ; space (ascii 32)
+	
+	;add.l d2,d2	 ; Fonts are 16px wide so we need to double d2
+			 ; to get the correct displacement
+	
+	mulu.w #40,d2	 ; each font is 16X20 so the displacement is 2bytes
+			 ; for 20 rows = 40 bytes
+			 
+	move.l d2,a2	 ; Now we have the displacement, lets copy the font
+			 ; address in a2 and then add the displacement
+	add.l #FONT,a2	 ; to get the real font address in a2
+	
+	; From now we use the blitter to copy the font on the first bitplane
+	BLTCPY2 a2,#PIC+38,BLTWAIT13,#(20<<6)+1
+	
+noprint
+	rts
+	
+printcharcounter
+	dc.w 16
+	
+charaddress
+	dc.l TEXT
+; End of printchar routine
+
+; Routine to copy and paste the text from and to the first bitplane
+; Each time the bits will be left shifted giving the illusion of the text
+; moving from right to left
+MoveText
+	move.l #PIC+((20*(0+20))-1)*2,d0
+	btst #6,$dff002
+waitblitmovetext
+	btst #6,$dff002
+	bne.s waitblitmovetext
+	
+	move.l #$19f00002,$dff040 ; BLTCON0 and BLTCON1
+				  ; copy from chan A to chan D
+				  ; with 1 pixel left shift
+	
+	move.l #$ffff7fff,$dff044 ; delete leftmost pixel
+	
+	move.l d0,$dff050	  ; load source
+	move.l d0,$dff054	  ; load destination
+	
+	move.l #$00000000,$dff064 ; BTLAMOD and BTLDMOD will be zeroed
+				  ; because the blitter operation will take
+				  ; the whole screen width
+				  
+	move.w #(20*64)+20,$dff058 ; the rectangle we are blitting it is 20px
+				  ; high (like the font heght) and
+				  ; 20 bytes wide (the whole screen)
+	
+	rts
+	
+; End of movetext routine --------------------	-----------
+	
+TEXT
+	dc.b "TANTI SALUTI AMIGOSI A DR PROCTON, MCK, CIPPO, "
+	dc.b "ALEGHID, CGUGL, TRANTOR, IL GRUPPO RAMJAM, "
+	dc.b "SUKKOPERA, MISANTHROPIXEL, DIVINA, FAROX68, AMIWELL79, "
+	dc.b "SCHIUMACAL, DANYPPC, MAK73, SEIYA E A TUTTI GLI UTENTI DI AMIGAPAGE.IT         "
+	dc.b "MUSICA DI FABIO 'BOVE' BOVELACCI AKA FRATER SINISTER - "
+	dc.b " 1-3-1976/7-9-2014    R.I.P.                          ",0
+	
 ; Routine to move the skull along the Y AXIS
 MoveSpriteY
 		ADDQ.L	#2,TABYPOINT	 ; Point to the next array element
@@ -174,36 +360,48 @@ MoveSpriteY
 NOBSTARTY
 		moveq	#0,d0		; Clean d0
 		MOVE.w	(A0),d0		; copy Y position in d0
-		MOVE.b	d0,VSTART2	; copy Y position at VSTART
-		move.b	d0,VSTART3	; Same thing for sprite1 (both same height)
+		move.w	d0,SKULLCURRENTYPOSITION; save the current Y POSITION
+		;MOVE.b	d0,VSTART2	; copy Y position at VSTART
+		move.b  d0,LEFTSKULLVSTART
+		;move.b	d0,VSTART3	; Same thing for sprite1 (both same height)
+		move.b  d0,RIGHTSKULLVSTART
 		btst.l	#8,d0		; if position grater than  255 ($FF)
 		beq.s	NonVSTARTSET	; if not clear bit 2
-		bset.b	#2,MYSPRITE2+3	; Set VSTART 8th bit
-		bset.b  #2,MYSPRITE3+3  ; Same for sprite 1
+		;bset.b	#2,MYSPRITE2+3	; Set VSTART 8th bit
+		bset    #2,LEFTSKULL+3
+		;bset.b  #2,MYSPRITE3+3  ; Same for sprite 1
+		bset.b	#2,RIGHTSKULL+3
 		bra.s	ToVSTOP		; Force Jump to ToVstop routine
 
 NonVSTARTSET
-		bclr.b	#2,MYSPRITE2+3  ; bit clearing
-		bclr.b  #2,MYSPRITE3+3  ; bit clearing
+		;bclr.b	#2,MYSPRITE2+3  ; bit clearing
+		bclr.b  #2,LEFTSKULL+3
+		;bclr.b  #2,MYSPRITE3+3  ; bit clearing
+		bclr.b  #2,RIGHTSKULL+3
 
 ToVSTOP
-		ADD.w	#26,D0		; Add height of the sprite to
-					; calculate vstop, in this case
-					; the skull is 26 pixel high
+					; Add height of the sprite to
+		add.w   #52,d0		; calculate vstop, in this case
+					; the skull is 50 pixel high
 					
-		move.b	d0,VSTOP2	; VSTOP setting on both sprites
-		move.b  d0,VSTOP3
+					; VSTOP setting on both sprites
+		move.b  d0,LEFTSKULLVSTOP
+		move.b  d0,RIGHTSKULLVSTOP
 					; Like vstart we must tell if Y>255
 					; but in this case we set/clear bit 1
 					; of the sprite control byte 
 		btst.l	#8,d0
 		beq.s	NonVSTOPSET
-		bset.b	#1,MYSPRITE2+3
-		bset.b  #1,MYSPRITE3+3
+		;bset.b	#1,MYSPRITE2+3
+		bset.b  #1,LEFTSKULL+3
+		;bset.b  #1,MYSPRITE3+3
+		bset.b   #1,RIGHTSKULL+3
 		bra.w	VstopFIN
 NonVSTOPSET
-		bclr.b	#1,MYSPRITE2+3
-		bclr.b  #1,MYSPRITE3+3
+		;bclr.b	#1,MYSPRITE2+3
+		bclr.b	#1,LEFTSKULL+3
+		;bclr.b  #1,MYSPRITE3+3
+		bclr.b	#1,RIGHTSKULL+3
 
 VstopFIN
 		rts
@@ -211,6 +409,7 @@ VstopFIN
 TABYPOINT
 		dc.l	TABY-2
 
+; Routine to move the sprite along the X AXIS
 MoveSprite
 		ADDQ.L	#2,TABXPOINT
 		MOVE.L	TABXPOINT(PC),A0
@@ -219,32 +418,42 @@ MoveSprite
 		MOVE.L	#TABX-2,TABXPOINT
 
 
-; Routine to move the sprite along the X AXIS
 NOBSTARTX
 	moveq	#0,d0
 	move.w  (a0),d0
+	move.w	d0,SKULLCURRENTXPOSITION; save the current X POSITION
 	btst	#0,D0
 	beq.s	BitBassoZERO
-	bset	#0,MYSPRITE2+3
-	bset    #0,MYSPRITE3+3
+	bset    #0,LEFTSKULL+3
+	bset 	#0,RIGHTSKULL+3
 	bra.s	PlaceCoords
 
 BitBassoZERO
-	bclr	#0,MYSPRITE2+3
-	bclr    #0,MYSPRITE3+3
+	bclr	#0,LEFTSKULL+3
+	bclr	#0,RIGHTSKULL+3
 PlaceCoords
 	lsr.w	#1,D0
-	MOVE.b	d0,HSTART2
-	MOVE.b	d0,HSTART3
-	addi.b  #8,HSTART3
+	move.b	d0,LEFTSKULLHSTART
+	move.b	d0,RIGHTSKULLHSTART
+	addi.b	#8,RIGHTSKULLHSTART
 	rts
 
-
+SKULLCURRENTXPOSITION
+	dc.w 0
+SKULLCURRENTYPOSITION
+	dc.w 0
+	
 TABXPOINT
 		dc.l	TABX-2
+		
+; f(x) = 80sin((1/-45.8599)x)+130
 
-; SPRITE COORDINATES (ABSOLUTES, NO NEED TO ADD SCREEN DISPLACEMENTS)
 TABX
+	dc.w $80,$81,$82,$83,$84,$85,$86,$87,$88,$89
+	dc.w $8a,$8b,$8c,$8d,$8e,$8f,$90,$91,$92,$93
+	dc.w $94,$95,$96,$97,$98,$99,$9a,$9b,$9c,$9d
+	dc.w $9e,$9f,$a0,$a1,$a2,$a3,$a4,$a5,$a6,$a7
+	dc.w $a8,$a9,$aa,$ab,$ac,$ad,$ae,$af,$b0,$b1
 	dc.w $b2,$b3,$b4,$b5,$b6,$b7,$b8,$b9,$ba,$bb
 	dc.w $bc,$bd,$be,$bf,$c0,$c1,$c2,$c3,$c4,$c5
 	dc.w $c6,$c7,$c8,$c9,$ca,$cb,$cc,$cd,$ce,$cf
@@ -268,50 +477,104 @@ TABX
 	dc.w $17a,$17b,$17c,$17d,$17e,$17f,$180,$181,$182,$183
 	dc.w $184,$185,$186,$187,$188,$189,$18a,$18b,$18c,$18d
 	dc.w $18e,$18f,$190,$191,$192,$193,$194,$195,$196,$197
-	dc.w $198,$199,$19a,$19b,$19c,$19d,$19e,$19f,$1a0,$1a1
-	dc.w $1a2,$1a3,$1a4,$1a5,$1a6,$1a7,$1a8,$1a9,$1aa,$1ab
-	dc.w $1ac,$1ad,$1ae,$1af,$1b0,$1b1,$1b2,$1b3,$1b4,$1b5
-	dc.w $1b6,$1b7,$1b8,$1b9,$1ba,$1bb,$1bc,$1bd,$1be,$1bf
-	dc.w $1bf,$1bf,$1bf,$1be,$1bd,$1bb,$1b8,$1b3,$1a9,$199
-	dc.w $182,$169,$156,$147,$127,$11c,$fc,$e3,$cd,$b9
-	dc.w $af,$af,$a9,$ae,$af,$ac,$b0
+	dc.w $198,$199,$19a,$19b,$19c,$19d,$19e,$19f,$1a0
+TABXMIRROR
+	dc.w $1a0,$19f,$19e,$19d,$19c,$19b,$19a,$199,$198,$197
+	dc.w $196,$195,$194,$193,$192,$191,$190,$18f,$18e,$18d
+	dc.w $18c,$18b,$18a,$189,$188,$187,$186,$185,$184,$183
+	dc.w $182,$181,$180,$17f,$17e,$17d,$17c,$17b,$17a,$179
+	dc.w $178,$177,$176,$175,$174,$173,$172,$171,$170,$16f
+	dc.w $16e,$16d,$16c,$16b,$16a,$169,$168,$167,$166,$165
+	dc.w $164,$163,$162,$161,$160,$15f,$15e,$15d,$15c,$15b
+	dc.w $15a,$159,$158,$157,$156,$155,$154,$153,$152,$151
+	dc.w $150,$14f,$14e,$14d,$14c,$14b,$14a,$149,$148,$147
+	dc.w $146,$145,$144,$143,$142,$141,$140,$13f,$13e,$13d
+	dc.w $13c,$13b,$13a,$139,$138,$137,$136,$135,$134,$133
+	dc.w $132,$131,$130,$12f,$12e,$12d,$12c,$12b,$12a,$129
+	dc.w $128,$127,$126,$125,$124,$123,$122,$121,$120,$11f
+	dc.w $11e,$11d,$11c,$11b,$11a,$119,$118,$117,$116,$115
+	dc.w $114,$113,$112,$111,$110,$10f,$10e,$10d,$10c,$10b
+	dc.w $10a,$109,$108,$107,$106,$105,$104,$103,$102,$101
+	dc.w $100,$ff,$fe,$fd,$fc,$fb,$fa,$f9,$f8,$f7
+	dc.w $f6,$f5,$f4,$f3,$f2,$f1,$f0,$ef,$ee,$ed
+	dc.w $ec,$eb,$ea,$e9,$e8,$e7,$e6,$e5,$e4,$e3
+	dc.w $e2,$e1,$e0,$df,$de,$dd,$dc,$db,$da,$d9
+	dc.w $d8,$d7,$d6,$d5,$d4,$d3,$d2,$d1,$d0,$cf
+	dc.w $ce,$cd,$cc,$cb,$ca,$c9,$c8,$c7,$c6,$c5
+	dc.w $c4,$c3,$c2,$c1,$c0,$bf,$be,$bd,$bc,$bb
+	dc.w $ba,$b9,$b8,$b7,$b6,$b5,$b4,$b3,$b2,$b1
+	dc.w $b0,$af,$ae,$ad,$ac,$ab,$aa,$a9,$a8,$a7
+	dc.w $a6,$a5,$a4,$a3,$a2,$a1,$a0,$9f,$9e,$9d
+	dc.w $9c,$9b,$9a,$99,$98,$97,$96,$95,$94,$93
+	dc.w $92,$91,$90,$8f,$8e,$8d,$8c,$8b,$8a,$89
+	dc.w $88,$87,$86,$85,$84,$83,$82,$81,$80
 FINETABX
 
 TABY
-	dc.w $126,$126,$126,$126,$126,$125,$125,$125,$125,$124
-	dc.w $124,$124,$124,$123,$123,$123,$122,$122,$122,$122
-	dc.w $121,$121,$121,$120,$120,$120,$11f,$11f,$11f,$11e
-	dc.w $11e,$11e,$11d,$11d,$11d,$11c,$11c,$11c,$11b,$11b
-	dc.w $11a,$11a,$11a,$119,$119,$119,$118,$118,$117,$117
-	dc.w $116,$116,$116,$115,$115,$114,$114,$113,$113,$113
-	dc.w $112,$112,$111,$111,$110,$110,$10f,$10f,$10e,$10e
-	dc.w $10d,$10d,$10c,$10c,$10b,$10b,$10a,$10a,$109,$109
-	dc.w $108,$108,$107,$106,$106,$105,$105,$104,$104,$103
-	dc.w $102,$102,$101,$101,$100,$100,$ff,$fe,$fe,$fd
-	dc.w $fc,$fc,$fb,$fb,$fa,$f9,$f9,$f8,$f7,$f7
-	dc.w $f6,$f5,$f5,$f4,$f3,$f3,$f2,$f1,$f1,$f0
-	dc.w $ef,$ef,$ee,$ed,$ec,$ec,$eb,$ea,$ea,$e9
-	dc.w $e8,$e7,$e7,$e6,$e5,$e4,$e4,$e3,$e2,$e1
-	dc.w $e0,$e0,$df,$de,$dd,$dd,$dc,$db,$da,$d9
-	dc.w $d8,$d8,$d7,$d6,$d5,$d4,$d4,$d3,$d2,$d1
-	dc.w $d0,$cf,$ce,$ce,$cd,$cc,$cb,$ca,$c9,$c8
-	dc.w $c7,$c6,$c5,$c5,$c4,$c3,$c2,$c1,$c0,$bf
-	dc.w $be,$bd,$bc,$bb,$ba,$b9,$b8,$b7,$b6,$b5
-	dc.w $b4,$b4,$b3,$b2,$b1,$b0,$af,$ae,$ad,$ac
-	dc.w $aa,$a9,$a8,$a7,$a6,$a5,$a4,$a3,$a2,$a1
-	dc.w $a0,$9f,$9e,$9d,$9c,$9b,$9a,$99,$97,$96
-	dc.w $95,$94,$93,$92,$91,$90,$8f,$8e,$8c,$8b
-	dc.w $8a,$89,$88,$87,$86,$84,$83,$82,$81,$80
-	dc.w $7e,$7d,$7c,$7b,$7a,$79,$77,$76,$75,$74
-	dc.w $72,$71,$70,$6f,$6e,$6c,$6b,$6a,$69,$67
-	dc.w $66,$65,$64,$62,$61,$60,$5e,$5d,$5c,$5b
-	dc.w $5a,$59,$58,$58,$58,$58,$58,$58,$58,$58
-	dc.w $58,$57,$57,$57,$58,$59,$5a,$60,$6b,$7f
-	dc.w $97,$ac,$c5,$df,$101,$115,$126
+	dc.w $aa,$ac,$ae,$b0,$b1,$b3,$b5,$b7,$b8,$ba
+	dc.w $bc,$be,$bf,$c1,$c3,$c4,$c6,$c7,$c9,$cb
+	dc.w $cc,$ce,$cf,$d1,$d2,$d4,$d5,$d7,$d8,$da
+	dc.w $db,$dd,$de,$df,$e1,$e2,$e3,$e4,$e5,$e7
+	dc.w $e8,$e9,$ea,$eb,$ec,$ed,$ee,$ef,$f0,$f1
+	dc.w $f1,$f2,$f3,$f4,$f4,$f5,$f6,$f6,$f7,$f7
+	dc.w $f8,$f8,$f9,$f9,$f9,$fa,$fa,$fa,$fa,$fa
+	dc.w $fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa
+	dc.w $f9,$f9,$f9,$f8,$f8,$f7,$f7,$f6,$f6,$f5
+	dc.w $f4,$f4,$f3,$f2,$f1,$f1,$f0,$ef,$ee,$ed
+	dc.w $ec,$eb,$ea,$e9,$e8,$e7,$e6,$e4,$e3,$e2
+	dc.w $e1,$df,$de,$dd,$db,$da,$d8,$d7,$d6,$d4
+	dc.w $d3,$d1,$d0,$ce,$cc,$cb,$c9,$c8,$c6,$c4
+	dc.w $c3,$c1,$bf,$be,$bc,$ba,$b9,$b7,$b5,$b3
+	dc.w $b2,$b0,$ae,$ac,$ab,$a9,$a7,$a5,$a4,$a2
+	dc.w $a0,$9e,$9d,$9b,$99,$98,$96,$94,$93,$91
+	dc.w $8f,$8e,$8c,$8a,$89,$87,$86,$84,$83,$81
+	dc.w $80,$7e,$7d,$7b,$7a,$79,$77,$76,$75,$73
+	dc.w $72,$71,$70,$6e,$6d,$6c,$6b,$6a,$69,$68
+	dc.w $67,$66,$65,$64,$64,$63,$62,$61,$61,$60
+	dc.w $5f,$5f,$5e,$5e,$5d,$5d,$5c,$5c,$5c,$5b
+	dc.w $5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b
+	dc.w $5b,$5b,$5b,$5b,$5c,$5c,$5c,$5d,$5d,$5e
+	dc.w $5e,$5f,$5f,$60,$61,$61,$62,$63,$63,$64
+	dc.w $65,$66,$67,$68,$69,$6a,$6b,$6c,$6d,$6e
+	dc.w $6f,$71,$72,$73,$74,$76,$77,$78,$7a,$7b
+	dc.w $7c,$7e,$7f,$81,$82,$84,$85,$87,$88,$8a
+	dc.w $8c,$8d,$8f,$91,$92,$94,$96,$97,$99,$9b
+	dc.w $9c,$9e,$a0,$a2,$a3,$a5,$a7,$a9,$aa
+
+TABYMIRROR
+	dc.w $aa,$a9,$a7,$a5,$a3,$a2,$a0,$9e,$9c,$9b
+	dc.w $99,$97,$96,$94,$92,$91,$8f,$8d,$8c,$8a
+	dc.w $88,$87,$85,$84,$82,$81,$7f,$7e,$7c,$7b
+	dc.w $7a,$78,$77,$76,$74,$73,$72,$71,$6f,$6e
+	dc.w $6d,$6c,$6b,$6a,$69,$68,$67,$66,$65,$64
+	dc.w $63,$63,$62,$61,$61,$60,$5f,$5f,$5e,$5e
+	dc.w $5d,$5d,$5c,$5c,$5c,$5b,$5b,$5b,$5b,$5b
+	dc.w $5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b,$5b
+	dc.w $5c,$5c,$5c,$5d,$5d,$5e,$5e,$5f,$5f,$60
+	dc.w $61,$61,$62,$63,$64,$64,$65,$66,$67,$68
+	dc.w $69,$6a,$6b,$6c,$6d,$6e,$70,$71,$72,$73
+	dc.w $75,$76,$77,$79,$7a,$7b,$7d,$7e,$80,$81
+	dc.w $83,$84,$86,$87,$89,$8a,$8c,$8e,$8f,$91
+	dc.w $93,$94,$96,$98,$99,$9b,$9d,$9e,$a0,$a2
+	dc.w $a4,$a5,$a7,$a9,$ab,$ac,$ae,$b0,$b2,$b3
+	dc.w $b5,$b7,$b9,$ba,$bc,$be,$bf,$c1,$c3,$c4
+	dc.w $c6,$c8,$c9,$cb,$cc,$ce,$d0,$d1,$d3,$d4
+	dc.w $d6,$d7,$d8,$da,$db,$dd,$de,$df,$e1,$e2
+	dc.w $e3,$e4,$e6,$e7,$e8,$e9,$ea,$eb,$ec,$ed
+	dc.w $ee,$ef,$f0,$f1,$f1,$f2,$f3,$f4,$f4,$f5
+	dc.w $f6,$f6,$f7,$f7,$f8,$f8,$f9,$f9,$f9,$fa
+	dc.w $fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa,$fa
+	dc.w $fa,$fa,$fa,$fa,$f9,$f9,$f9,$f8,$f8,$f7
+	dc.w $f7,$f6,$f6,$f5,$f4,$f4,$f3,$f2,$f1,$f1
+	dc.w $f0,$ef,$ee,$ed,$ec,$eb,$ea,$e9,$e8,$e7
+	dc.w $e5,$e4,$e3,$e2,$e1,$df,$de,$dd,$db,$da
+	dc.w $d8,$d7,$d5,$d4,$d2,$d1,$cf,$ce,$cc,$cb
+	dc.w $c9,$c7,$c6,$c4,$c3,$c1,$bf,$be,$bc,$ba
+	dc.w $b8,$b7,$b5,$b3,$b1,$b0,$ae,$ac,$aa
 FINETABY
 
 ; ROUTINE TO MOVE PLAYFIELD 2 UP AND DOWN	
-MuoviCopper
+MoveBanner
 
 	; Change only pointers relative of PLAYFIELD2 (even ones)
 	lea	BPLPOINTERS2,a1
@@ -340,8 +603,8 @@ MuoviCopper
 
 MettiGiu
 	; Change the skull jaw pasting data with the blitter - the jaw will be opened	
-	BLTCPY #JAWLOPEN,#JAW2,BLTWAIT12,#(64*1)+14
-	BLTCPY #JAWROPEN,#JAW3,BLTWAIT10,#(64*1)+14
+	BLTCPY #JAWLOPEN,#LEFTSKULLJAW,BLTWAIT12,#(64*1)+56
+	BLTCPY #JAWROPEN,#RIGHTSKULLJAW,BLTWAIT10,#(64*1)+56
 
 	; SuGiu flag is now 0
 	clr.b	SuGiu
@@ -357,8 +620,11 @@ VAIGIU
 	
 MettiSu
 	; Change the skull jaw pasting data with the blitter - the jaw will be closed
-	BLTCPY #JAWLCLOSED,#JAW2,BLTWAIT11,#(64*1)+14
-	BLTCPY #JAWRCLOSED,#JAW3,BLTWAIT9,#(64*1)+14
+	BLTCPY #JAWLCLOSED,#LEFTSKULLJAW,BLTWAIT11,#(64*1)+56
+	BLTCPY #JAWRCLOSED,#RIGHTSKULLJAW,BLTWAIT9,#(64*1)+56
+	
+	;move.w	#$fff,COLORS+2 ; Uncomment to enable background flash
+	
 	move.b #$ff,SuGiu
 	rts
 	
@@ -440,8 +706,8 @@ BPLPOINTERS2_2
 		
 COLORS	
 		; Colors for bitplane 1
-		dc.w    $180,$511    ; color0 (transparency for bitplane 1)
-		dc.w    $182,$000    ; color1
+		dc.w    $180,$622    ; color0 (transparency for bitplane 1)
+		dc.w    $182,$c42    ; color1
 		dc.w    $184,$532    ; color2
 		dc.w    $186,$fff    ; color3
 		dc.w    $188,$840    ; color4
@@ -458,12 +724,10 @@ COLORS
 		dc.w    $19c,$d62    ; color14
 		dc.w    $19e,$fa6    ; color15
 
-
-
 		;sprite colors;
-		dc.w    $1a2,$222    ; skull color 1
-		dc.w    $1a4,$999    ; skull color 2
-		dc.w    $1a6,$eee    ; skull color 3
+		dc.w    $1a2,$333    ; skull color 1
+		dc.w    $1a4,$fff    ; skull color 2
+		dc.w    $1a6,$000    ; skull color 3
 
 		dc.w    $1a8,$070    ; color4 - unused (useful for attached sprites in the future)
 		dc.w    $1aa,$000    ; color5 - unused (useful for attached sprites in the future)
@@ -480,6 +744,17 @@ COLORS
 		dc.w    $1bc,$333    ; color30
 		dc.w    $1be,$444    ; color31
 		
+		; text gradient
+		dc.w	$3107,$FFFE
+		dc.w    $182,$a42
+		dc.w	$3607,$FFFE
+		dc.w    $182,$942
+		dc.w	$3b07,$FFFE
+		dc.w    $182,$842
+		
+		dc.w	$4a07,$FFFE  ; Wait to differentiate color of the text
+		dc.w    $182,$000    ; color1
+		
 		dc.w $FFFF,$FFFE
 ; ------------------------------------------------------------------
 ;  ---- COPPERLIST END ---------------------------------------------
@@ -488,108 +763,249 @@ COLORS
 ;
 ; Image of the left skull jaw opened (sprite 0)
 JAWLOPEN
-                dc.w $0080,$0080 ; line 20
-                dc.w $0080,$0080
-                dc.w $00FF,$0080
-                dc.w $00E3,$009E
-                dc.w $005F,$003F
-                dc.w $003F,$003F
-                dc.w $0007,$0000
+	dc.w $034A,$02B5 ; line 1
+	dc.w $0288,$0377 ; line 2
+	dc.w $0358,$00A7 ; line 3
+	dc.w $06A7,$0558 ; line 4
+	dc.w $0765,$049A ; line 5
+	dc.w $06E7,$0118 ; line 6
+	dc.w $05E5,$025B ; line 7
+	dc.w $06E6,$015A ; line 8
+	dc.w $0DE4,$065C ; line 9
+	dc.w $1BE4,$079C ; line 10
+	dc.w $1074,$0C68 ; line 11
+	dc.w $1014,$0C0C ; line 12
+	dc.w $001E,$0E12 ; line 13
+	dc.w $080E,$0606 ; line 14
+	dc.w $010E,$060E ; line 15
+	dc.w $0536,$0200 ; line 16
+	dc.w $06EF,$0151 ; line 17
+	dc.w $056D,$02D2 ; line 18
+	dc.w $0667,$0198 ; line 19
+	dc.w $0325,$00DA ; line 20
+	dc.w $02B7,$0148 ; line 21
+	dc.w $0359,$00A6 ; line 22
+	dc.w $0288,$0177 ; line 23
+	dc.w $014A,$00B5 ; line 24
+	dc.w $0040,$003F ; line 25
+	dc.w $0010,$000F ; line 26
+	dc.w $0007,$0000 ; line 27
+	dc.w $0000,$0000 ; line 28
 
 ; Image of the left skull jaw closed (sprite 0)
-JAWLCLOSED      dc.w $00FF,$0080 ;20
-                dc.w $00E3,$009E ;21
-                dc.w $005F,$003F ;22
-                dc.w $003F,$003F ;23
-                dc.w $0007,$0000 ;24
-                dc.w $0000,$0000 ;25
-                dc.w $0000,$0000 ;26
+JAWLCLOSED
+	dc.w $074A,$02B5 ; line 1
+	dc.w $0E88,$0377 ; line 2
+	dc.w $1B58,$04A7 ; line 3
+	dc.w $16A7,$0D58 ; line 4
+	dc.w $1765,$0C9A ; line 5
+	dc.w $06E7,$0918 ; line 6
+	dc.w $0DE5,$025B ; line 7
+	dc.w $06E6,$015A ; line 8
+	dc.w $05E6,$065C ; line 9
+	dc.w $07E7,$039D ; line 10
+	dc.w $0575,$02EA ; line 11
+	dc.w $0677,$018C ; line 12
+	dc.w $033D,$00D2 ; line 13
+	dc.w $02BF,$0144 ; line 14
+	dc.w $035D,$00AE ; line 15
+	dc.w $0288,$0177 ; line 16
+	dc.w $014A,$00B5 ; line 17
+	dc.w $0040,$003F ; line 18
+	dc.w $0010,$000F ; line 19
+	dc.w $0007,$0000 ; line 20
+	dc.w $0000,$0000 ; line 21
+	dc.w $0000,$0000 ; line 22
+	dc.w $0000,$0000 ; line 23
+	dc.w $0000,$0000 ; line 24
+	dc.w $0000,$0000 ; line 25
+	dc.w $0000,$0000 ; line 26
+	dc.w $0000,$0000 ; line 27
+	dc.w $0000,$0000 ; line 28    
 
 ; Image of the right skull jaw closed (sprite 1) - sprite side by side
-JAWRCLOSED      dc.w $FC00,$0300 ;20
-                dc.w $5400,$EB00 ;21
-                dc.w $FA00,$FC00 ;22
-                dc.w $FC00,$FC00 ;23
-                dc.w $F000,$0000 ;24
-                dc.w $0000,$0000 ;25
-                dc.w $0000,$0000 ;26
+JAWRCLOSED      
+	dc.w $50E0,$AF40 ; line 1
+	dc.w $1070,$EF80 ; line 2
+	dc.w $9A58,$65A0 ; line 3
+	dc.w $E568,$1AB0 ; line 4
+	dc.w $A668,$59B0 ; line 5
+	dc.w $E720,$18D0 ; line 6
+	dc.w $A730,$DAC0 ; line 7
+	dc.w $6720,$5AC0 ; line 8
+	dc.w $67A0,$3A60 ; line 9
+	dc.w $E7E0,$B9C0 ; line 10
+	dc.w $AEA0,$D740 ; line 11
+	dc.w $EE60,$3180 ; line 12
+	dc.w $BCC0,$4B00 ; line 13
+	dc.w $FD40,$2280 ; line 14
+	dc.w $3AC0,$F500 ; line 15
+	dc.w $1140,$EE80 ; line 16
+	dc.w $5280,$AD00 ; line 17
+	dc.w $0200,$FC00 ; line 18
+	dc.w $0800,$F000 ; line 19
+	dc.w $E000,$0000 ; line 20
+	dc.w $0000,$0000 ; line 21
+	dc.w $0000,$0000 ; line 22
+	dc.w $0000,$0000 ; line 23
+	dc.w $0000,$0000 ; line 24
+	dc.w $0000,$0000 ; line 25
+	dc.w $0000,$0000 ; line 26
+	dc.w $0000,$0000 ; line 27
+	dc.w $0000,$0000 ; line 28
 
 ; Image of the right skull jaw opened (sprite 1) - sprite side by side
 JAWROPEN
-                dc.w $0000,$0100 ; line 20
-                dc.w $0000,$0100 ; line 21
-                dc.w $FC00,$0300 ; line 22
-                dc.w $5400,$EB00 ; line 23
-                dc.w $FA00,$FC00 ; line 24
-                dc.w $FC00,$FC00 ; line 25
-                dc.w $F000,$0000 ; line 26
-
-; Right Image of the skull (SPRITE1)
-MYSPRITE3
-VSTART3 dc.b $50
-HSTART3 dc.b $90
-VSTOP3  dc.b $6a,$00
-        dc.w $0000,$0000 ; line 1
-        dc.w $F000,$0000 ; line 2
-        dc.w $EC00,$F000 ; line 3
-        dc.w $FF80,$FF00 ; line 4
-        dc.w $FFC0,$FF80 ; line 5
-        dc.w $FFE0,$FFE0 ; line 6
-        dc.w $FFF0,$FFE0 ; line 7
-        dc.w $FFE0,$FFF0 ; line 8
-        dc.w $FFE0,$FFF0 ; line 9
-        dc.w $FFE0,$FFB0 ; line 10
-        dc.w $B7E0,$CFB0 ; line 11
-        dc.w $FEE0,$FF70 ; line 12
-        dc.w $BF80,$C040 ; line 13
-        dc.w $5FE0,$E060 ; line 14
-        dc.w $B7E0,$78E0 ; line 15
-        dc.w $B7E0,$78E0 ; line 16
-        dc.w $37E0,$FBC0 ; line 17
-        dc.w $F780,$F800 ; line 18
-        dc.w $4600,$F900 ; line 19
-JAW3
-        dc.w $0000,$0100 ; line 20
-        dc.w $0000,$0100 ; line 21
-        dc.w $FC00,$0300 ; line 22
-        dc.w $5400,$EB00 ; line 23
-        dc.w $FA00,$FC00 ; line 24
-        dc.w $FC00,$FC00 ; line 25
-        dc.w $F000,$0000 ; line 26
-        dc.w 0,0
+	dc.w $50C0,$AF40 ; line 1
+	dc.w $1040,$EF80 ; line 2
+	dc.w $9A40,$6580 ; line 3
+	dc.w $E560,$1AA0 ; line 4
+	dc.w $A660,$59A0 ; line 5
+	dc.w $E720,$18C0 ; line 6
+	dc.w $A720,$DAC0 ; line 7
+	dc.w $6720,$5AC0 ; line 8
+	dc.w $27B0,$3A60 ; line 9
+	dc.w $27D8,$39E0 ; line 10
+	dc.w $2E08,$1630 ; line 11
+	dc.w $2808,$3030 ; line 12
+	dc.w $7800,$4870 ; line 13
+	dc.w $7010,$6060 ; line 14
+	dc.w $7080,$7060 ; line 15
+	dc.w $6CA0,$0040 ; line 16
+	dc.w $F760,$8A80 ; line 17
+	dc.w $B6A0,$CB40 ; line 18
+	dc.w $E660,$1980 ; line 19
+	dc.w $A4C0,$5B00 ; line 20
+	dc.w $ED40,$1280 ; line 21
+	dc.w $1AC0,$E500 ; line 22
+	dc.w $1140,$EE80 ; line 23
+	dc.w $5280,$AD00 ; line 24
+	dc.w $0200,$FC00 ; line 25
+	dc.w $0800,$F000 ; line 26
+	dc.w $E000,$0000 ; line 27
+	dc.w $0000,$0000 ; line 28
 
 ; Left Image of the skull (SPRITE0)
-MYSPRITE2
-VSTART2 dc.b $50
-HSTART2 dc.b $90
-VSTOP2  dc.b $6a,$00
-        dc.w $0000,$0000 ;1
-        dc.w $000F,$0000 ;2
-        dc.w $0037,$000F ;3
-        dc.w $01FF,$00FF ;4
-        dc.w $03FF,$01FF ;5
-        dc.w $07FF,$07FF ;6
-        dc.w $0FFF,$07FF ;7
-        dc.w $0FFF,$0FFF ;8
-        dc.w $0FFF,$0FFF ;9
-        dc.w $0EFF,$0DFF ;10
-        dc.w $0EFD,$0DE3 ;11
-        dc.w $07FF,$0EFF ;12
-        dc.w $03FD,$0203 ;13
-        dc.w $07FF,$0606 ;14
-        dc.w $07ED,$071E ;15
-        dc.w $07ED,$071E ;16
-        dc.w $07EC,$03DF ;17
-        dc.w $01EF,$001F ;18
-        dc.w $00E2,$009F ;19
-JAW2    dc.w $0080,$0080 ;20
-        dc.w $0080,$0080 ;21
-        dc.w $00FF,$0080 ;22
-        dc.w $00E3,$009E ;23
-        dc.w $005F,$003F ;24 
-        dc.w $003F,$003F ;25
-        dc.w $0007,$0000 ;26
-        dc.w 0,0
+LEFTSKULL
+LEFTSKULLVSTART	dc.b $30
+LEFTSKULLHSTART	dc.b $90
+LEFTSKULLVSTOP	dc.b $62,$00
+		dc.w $007F,$0000 ; line 1
+		dc.w $01E0,$001F ; line 2
+		dc.w $0758,$00A7 ; line 3
+		dc.w $0E84,$017B ; line 4
+		dc.w $1D02,$02FD ; line 5
+		dc.w $3A03,$05FC ; line 6
+		dc.w $3501,$0AFE ; line 7
+		dc.w $6A81,$157E ; line 8
+		dc.w $5F01,$20FE ; line 9
+		dc.w $ED01,$12FE ; line 10
+		dc.w $C7C1,$383E ; line 11
+		dc.w $A7B2,$5B4D ; line 12
+		dc.w $CFEC,$33F3 ; line 13
+		dc.w $AFFE,$57FD ; line 14
+LEFTSKULLEYES1	dc.w $CF7E,$37FF ; line 15
+LEFTSKULLEYES2	dc.w $AF3E,$57DF ; line 16
+		dc.w $CFF8,$31E7 ; line 17
+		dc.w $E3F0,$1C0F ; line 18
+		dc.w $5401,$2BFF ; line 19
+		dc.w $3865,$079E ; line 20
+		dc.w $15CD,$0A33 ; line 21
+		dc.w $1F4D,$10B3 ; line 22
+		dc.w $018D,$0072 ; line 23
+LEFTSKULLJAW	dc.w $034A,$02B5 ; line 24
+		dc.w $0288,$0377 ; line 25
+		dc.w $0358,$00A7 ; line 26
+		dc.w $06A7,$0558 ; line 27
+		dc.w $0765,$049A ; line 28
+		dc.w $06E7,$0118 ; line 29
+		dc.w $05E5,$025B ; line 30
+		dc.w $06E6,$015A ; line 31
+		dc.w $05E4,$065C ; line 32
+		dc.w $03E4,$039C ; line 33
+		dc.w $0074,$0068 ; line 34
+		dc.w $0014,$000C ; line 35
+		dc.w $001C,$0010 ; line 36
+		dc.w $000C,$0004 ; line 37
+		dc.w $000C,$000C ; line 38
+		
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,40000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w 0,0
+		
+RIGHTSKULL
+RIGHTSKULLVSTART	dc.b $30
+RIGHTSKULLHSTART	dc.b $90
+RIGHTSKULLVSTOP	dc.b $64,$00
+		dc.w $FF00,$0000 ; line 1
+		dc.w $0180,$FE00 ; line 2
+		dc.w $A0E0,$5F00 ; line 3
+		dc.w $4030,$BFC0 ; line 4
+		dc.w $8018,$7FE0 ; line 5
+		dc.w $800C,$7FF0 ; line 6
+		dc.w $0004,$FFF8 ; line 7
+		dc.w $0006,$FFF8 ; line 8
+		dc.w $0012,$FFEC ; line 9
+		dc.w $0033,$FFCC ; line 10
+		dc.w $01E1,$FE1E ; line 11
+		dc.w $0EE1,$F1DE ; line 12
+		dc.w $37F1,$CFCE ; line 13
+		dc.w $7FF1,$BFEE ; line 14
+RIGHTSKULLEYES1	dc.w $7BF1,$FFEE ; line 15
+RIGHTSKULLEYES2	dc.w $79F1,$FEEE ; line 16
+		dc.w $1FF1,$E78E ; line 17
+		dc.w $0FC3,$F03C ; line 18
+		dc.w $8002,$FFFC ; line 19
+		dc.w $A60C,$79F0 ; line 20
+		dc.w $B388,$CC70 ; line 21
+		dc.w $B0F8,$4F10 ; line 22
+		dc.w $B080,$CF00 ; line 23
+RIGHTSKULLJAW	dc.w $50C0,$AF40 ; line 24
+		dc.w $1040,$EF80 ; line 25
+		dc.w $9A40,$6580 ; line 26
+		dc.w $E560,$1AA0 ; line 27
+		dc.w $A660,$59A0 ; line 28
+		dc.w $E720,$18C0 ; line 29
+		dc.w $A720,$DAC0 ; line 30
+		dc.w $6720,$5AC0 ; line 31
+		dc.w $27A0,$3A60 ; line 32
+		dc.w $27C0,$39C0 ; line 33
+		dc.w $2E00,$1600 ; line 34
+		dc.w $2800,$3000 ; line 35
+		dc.w $3800,$0800 ; line 36
+		dc.w $3000,$2000 ; line 37
+		dc.w $3000,$3000 ; line 38
+		
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+		dc.w $0000,$0000
+
+		
+		dc.w 0,0
+
 
 ; Image of the crow man
 PIC	incbin	"crow_img_8.raw"
@@ -607,6 +1023,10 @@ PIC2_3_BEFORE  dcb.b 40*256,$00
 PIC2_3	incbin "crow_banner_8_3.raw"
 PIC2_3_AFTER  dcb.b 40*256,$00
 
-mt_data	incbin  "inkazzato.mod"
+;mt_data	incbin  "inkazzato.mod"
+;mt_data		incbin	"aliceoncopper.mod"
+;mt_data		incbin "knulla-kuk.mod"
+mt_data			incbin "proud2bneanderthal.mod"
+FONT	incbin "fonts.fnt"
 
 	end
