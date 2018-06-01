@@ -4,9 +4,9 @@ Simple and free demo written in ASM meant for all classic Amiga computers - feat
 ![the crows](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/the_crows_github.png)
 
 
-The demos contain 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down, the third is a skull wandering through a precalcuated path on the screen.
+The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down, the third is a skull wandering through a precalcuated path on the screen.
 
-The scull is made of 2 sprites (SPRITES0 and SRITES1) side by side, this is mandatory since Amiga hardware allows sprites to have only 16 pixel width, if you want more you must combine more sprites.
+The scull is made of 2 sprites (SPRITES0 and SRITES1) side by side, this is mandatory since Amiga hardware allows sprites to have only 16 pixel width, if you want more you must combine more sprite side to side.
 During the demo a mod song is also playing.
 
 ### Versions (single playfield mode)
@@ -56,10 +56,14 @@ Palette duplication trickery is no more necessary since we can assign a dedicate
 Unfortunately we only have 3 bitplanes for each playfield, this means we have to decrease the palette of the bleeding man from 16 to 8 (7 colors and one reserved for transparency).
 On the other hand we unlock more colors for the banner colors, we now have up to 7 colors to play with and make some nice color transitions.
 Another benefit of the dual playfield mode is that now we have palette space for the skull sprite which is now free to move anywere without changing his own color.
+This version plays the proud2bneanderthal mod file by Frater Sinister, check his other excellent mod files at https://modarchive.org/index.php?request=view_artist_modules&query=69458
 
 ### Blitter
 Each versions of this demo use the blitter to animate the skull's jaw.
 The banner scrolling routine act also like a timer chaning the skull image each time the playfield reach the top or the bottom of the screen.
+The dual playfield version also features a right to left scrolltext with greetings to my friends.
+The scrolltext uses the blitter shift feature to copy data from a portion of the second playfield , the same data is then pasted over left shifting all the bits of one position and maskerading the most left bits with zero.
+Every 16 copy and paste operations a new letter is blitted to the screen.
 
 ### Skull movements
 The skull movements coordinates are always precalculated and stored at TABX and TABY address.
