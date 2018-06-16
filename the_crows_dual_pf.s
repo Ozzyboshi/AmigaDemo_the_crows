@@ -178,6 +178,13 @@ POINTBP
 	swap	d0
 	move.w	d0,2(a1)
 	
+	; Sprite 2 init (starfield)
+	MOVE.L	#STARFIELDSPRITE,d0		
+	addq.w	#8,a1
+	move.w	d0,6(a1)
+	swap	d0
+	move.w	d0,2(a1)
+	
 	; let's start our custom copperlist
 	move.l #COPPERLIST,$dff080
 	move.l d0,$dff088
@@ -201,6 +208,7 @@ mouse
 	bsr.w MoveBanner ; Move the background banner up and down
 	bsr.w PrintChar   ; Print a new character every 16 shifts
 	bsr.w MoveText    ; Move the text from left to right
+	bsr.w MoveStars   ; Move the background stars
 	bsr.w mt_music
 	
 vwait	WAITVEND vwait
@@ -219,8 +227,57 @@ lclick	btst #6,$bfe001
 	clr.l d0
 	rts
 	
+MoveStars
+	lea STARFIELDSPRITE,a0
+stars_loop
+	; FAST STARS
+	cmpi.b #$f0,1(a0)	; 1(a0) points to the star vsprite
+				; and $f0 = 240 , so we check if
+				; the sprite has reached screen width (256)
+				; minus sprite width (16px)
+				
+	bne	no_border1	; If not we have not reached the right of
+				; the screen and we branch to no_border
+				
+	; If we are here we have to reset the star position since the star
+	; reached the right border of the screen
+	move.b #30,1(a0)
+	
+no_border1
+	; Here we move the star to the right
+	addq.b #1,1(a0)
+	
+	; process the next star
+	addq.w #8,a0
+	
+	; SLOW STARS
+	cmpi.b #$f0,1(a0)
+	bne	no_border2
+	move.b #30,1(a0)
+no_border2
+	bchg #0,3(a0)
+	beq.s star_even
+	addq.b #1,1(a0)
+star_even
+	; process the next star
+	addq.w #8,a0
+	
+	; FASTEST STARS
+	cmpi.b #$f0,1(a0)
+	bne.s no_border3
+	move.b #30,1(a0)
+no_border3
+	addq.b #2,1(a0)	
+	; process the next star
+	addq.w #8,a0
+	
+	; check if we are processing the last star, if this is the case do rts
+	cmp.l #STARFIELDSPRITEEND,a0
+	blo.s stars_loop
+	rts 	
+	
+	
 MoveSpriteEyes
-	;cmp.b #64+84,LEFTSKULLHSTART
 	LOAD_OLD_SPRITE_POS TABXPOINT(PC),d0
 	cmp.w SKULLCURRENTXPOSITION,d0
 	bhi.s PrintLeftEyes
@@ -248,7 +305,6 @@ PrintLeftEyes
 ; Print skull's eyes pointing to top left
 PrintTopLeftEyes
 	PRINT_EYES_TOP_LEFT
-	;bra.s MoveSpriteEyesEnd			  
 
 MoveSpriteEyesEnd
 	rts
@@ -341,9 +397,15 @@ TEXT
 	dc.b "TANTI SALUTI AMIGOSI A DR PROCTON, MCK, CIPPO, "
 	dc.b "ALEGHID, CGUGL, TRANTOR, IL GRUPPO RAMJAM, "
 	dc.b "SUKKOPERA, MISANTHROPIXEL, DIVINA, FAROX68, AMIWELL79, "
-	dc.b "SCHIUMACAL, DANYPPC, MAK73, SEIYA E A TUTTI GLI UTENTI DI AMIGAPAGE.IT         "
+	dc.b "SCHIUMACAL, DANYPPC, MAK73, SEIYA, Z3K E A TUTTI GLI UTENTI DI AMIGAPAGE.IT         "
 	dc.b "MUSICA DI FABIO 'BOVE' BOVELACCI AKA FRATER SINISTER - "
-	dc.b " 1-3-1976/7-9-2014    R.I.P.                          ",0
+	dc.b " 1-3-1976/7-9-2014    R.I.P.                          "
+	dc.b "@BOVELACCI TWEETFEED:                "
+	dc.b "21 AGOSTO 2014   -   IO NON HO #ORECCHIE PER #INTENDERE NE #MENTE PER #CAPIRE                         "
+	dc.b "#PENSATE UN PO QUEL CHE #CAZZO VI PARE - NON ESISTE MORTE #INDOLORE - NE TANTOMENO VITA               "
+	dc.b "NON ESISTE #INTEGRAZIONE, MA SOLO #INVASIONE #SOPRAFFAZIONE E #SCHIAVITU                              "
+	dc.b "20 AGOSTO 2014   -   AVENDO GIA RICEVUTO L'#UNZIONE DEGLI #INFERMI, MI E GARANTITA UNA #VISITA DI #GES"
+	dc.b "U PRIMA DI #MORIRE : PROBABILMENTE MI RIEMPIRA DI #BOTTE                                              ",0    
 	
 ; Routine to move the skull along the Y AXIS
 MoveSpriteY
@@ -367,10 +429,8 @@ NOBSTARTY
 		move.b  d0,RIGHTSKULLVSTART
 		btst.l	#8,d0		; if position grater than  255 ($FF)
 		beq.s	NonVSTARTSET	; if not clear bit 2
-		;bset.b	#2,MYSPRITE2+3	; Set VSTART 8th bit
-		bset    #2,LEFTSKULL+3
-		;bset.b  #2,MYSPRITE3+3  ; Same for sprite 1
-		bset.b	#2,RIGHTSKULL+3
+		bset    #2,LEFTSKULL+3  ; Set VSTART 8th bit  
+		bset.b	#2,RIGHTSKULL+3 ; Same for sprite 1
 		bra.s	ToVSTOP		; Force Jump to ToVstop routine
 
 NonVSTARTSET
@@ -392,15 +452,11 @@ ToVSTOP
 					; of the sprite control byte 
 		btst.l	#8,d0
 		beq.s	NonVSTOPSET
-		;bset.b	#1,MYSPRITE2+3
 		bset.b  #1,LEFTSKULL+3
-		;bset.b  #1,MYSPRITE3+3
 		bset.b   #1,RIGHTSKULL+3
 		bra.w	VstopFIN
 NonVSTOPSET
-		;bclr.b	#1,MYSPRITE2+3
 		bclr.b	#1,LEFTSKULL+3
-		;bclr.b  #1,MYSPRITE3+3
 		bclr.b	#1,RIGHTSKULL+3
 
 VstopFIN
@@ -678,7 +734,7 @@ SpritePointers	dc.w $120,$0000,$122,$0000,$124,$0000,$126,$0000,$128,$0000
 		dc.w	$94,$00d0
 		dc.w	$102,0
 		dc.w	$104,$0009 	; replace $0009 here with $0039 to print the banner OVER the image (exploiting a well known bug
-				   			; that lets you print color 16 where in the fifth bitplane there's a 1 - works only on ocs/ecs (A500/A600)
+				   	; that lets you print color 16 where in the fifth bitplane there's a 1 - works only on ocs/ecs (A500/A600)
 		dc.w	$108,0
 		dc.w	$10a,0
 		
@@ -689,6 +745,9 @@ SpritePointers	dc.w $120,$0000,$122,$0000,$124,$0000,$126,$0000,$128,$0000
 						; PF2OFx bits must be equal to 011, otherwise
 						; playfield 2 will use the same color palette
 						; of playfield 1 on AGA machines	
+
+		dc.w $01fc,$0000		; vampire fix
+
 ; Bitplane 1 pointers
 BPLPOINTERS1
 	dc.w $e0,0,$e2,0	; BPLPT1
@@ -707,7 +766,7 @@ BPLPOINTERS2_2
 COLORS	
 		; Colors for bitplane 1
 		dc.w    $180,$622    ; color0 (transparency for bitplane 1)
-		dc.w    $182,$c42    ; color1
+		dc.w    $182,$004    ; color1
 		dc.w    $184,$532    ; color2
 		dc.w    $186,$fff    ; color3
 		dc.w    $188,$840    ; color4
@@ -730,9 +789,9 @@ COLORS
 		dc.w    $1a6,$000    ; skull color 3
 
 		dc.w    $1a8,$070    ; color4 - unused (useful for attached sprites in the future)
-		dc.w    $1aa,$000    ; color5 - unused (useful for attached sprites in the future)
+		dc.w    $1aa,$faa    ; color21 - starfield color 0 - color of the star
 		dc.w    $1ac,$0b0    ; color6 - unused (useful for attached sprites in the future)
-		dc.w    $1ae,$222    ; color7 - unused (useful for attached sprites in the future)
+		dc.w    $1ae,$f00    ; color7 - unused (useful for attached sprites in the future)
 		dc.w    $1b0,$444    ; color8 - unused (useful for attached sprites in the future)
 		
 		; unused for now
@@ -746,11 +805,11 @@ COLORS
 		
 		; text gradient
 		dc.w	$3107,$FFFE
-		dc.w    $182,$a42
+		dc.w    $182,$009
 		dc.w	$3607,$FFFE
-		dc.w    $182,$942
+		dc.w    $182,$06f
 		dc.w	$3b07,$FFFE
-		dc.w    $182,$842
+		dc.w    $182,$0af
 		
 		dc.w	$4a07,$FFFE  ; Wait to differentiate color of the text
 		dc.w    $182,$000    ; color1
@@ -1005,6 +1064,75 @@ RIGHTSKULLJAW	dc.w $50C0,$AF40 ; line 24
 
 		
 		dc.w 0,0
+
+; Recycled sprite for the starfield		
+STARFIELDSPRITE
+	dc.w    $307A,$3100,$1000,$0000,$3220,$3300,$1000,$0000
+	dc.w    $34C0,$3500,$1000,$0000,$3650,$3700,$1000,$0000
+	dc.w    $3842,$3900,$1000,$0000,$3A6D,$3B00,$1000,$0000
+	dc.w    $3CA2,$3D00,$1000,$0000,$3E9C,$3F00,$1000,$0000
+	dc.w    $40DA,$4100,$1000,$0000,$4243,$4300,$1000,$0000
+	dc.w    $445A,$4500,$1000,$0000,$4615,$4700,$1000,$0000
+	dc.w    $4845,$4900,$1000,$0000,$4A68,$4B00,$1000,$0000
+	dc.w    $4CB8,$4D00,$1000,$0000,$4EB4,$4F00,$1000,$0000
+	dc.w    $5082,$5100,$1000,$0000,$5292,$5300,$1000,$0000
+	dc.w    $54D0,$5500,$1000,$0000,$56D3,$5700,$1000,$0000
+	dc.w    $58F0,$5900,$1000,$0000,$5A6A,$5B00,$1000,$0000
+	dc.w    $5CA5,$5D00,$1000,$0000,$5E46,$5F00,$1000,$0000
+	dc.w    $606A,$6100,$1000,$0000,$62A0,$6300,$1000,$0000
+	dc.w    $64D7,$6500,$1000,$0000,$667C,$6700,$1000,$0000
+	dc.w    $68C4,$6900,$1000,$0000,$6AC0,$6B00,$1000,$0000
+	dc.w    $6C4A,$6D00,$1000,$0000,$6EDA,$6F00,$1000,$0000
+	dc.w    $70D7,$7100,$1000,$0000,$7243,$7300,$1000,$0000
+	dc.w    $74A2,$7500,$1000,$0000,$7699,$7700,$1000,$0000
+	dc.w    $7872,$7900,$1000,$0000,$7A77,$7B00,$1000,$0000
+	dc.w    $7CC2,$7D00,$1000,$0000,$7E56,$7F00,$1000,$0000
+	dc.w    $805A,$8100,$1000,$0000,$82CC,$8300,$1000,$0000
+	dc.w    $848F,$8500,$1000,$0000,$8688,$8700,$1000,$0000
+	dc.w    $88B9,$8900,$1000,$0000,$8AAF,$8B00,$1000,$0000
+	dc.w    $8C48,$8D00,$1000,$0000,$8E68,$8F00,$1000,$0000
+	dc.w    $90DF,$9100,$1000,$0000,$924F,$9300,$1000,$0000
+	dc.w    $9424,$9500,$1000,$0000,$96D7,$9700,$1000,$0000
+	dc.w    $9859,$9900,$1000,$0000,$9A4F,$9B00,$1000,$0000
+	dc.w    $9C4A,$9D00,$1000,$0000,$9E5C,$9F00,$1000,$0000
+	dc.w    $A046,$A100,$1000,$0000,$A2A6,$A300,$1000,$0000
+	dc.w    $A423,$A500,$1000,$0000,$A6FA,$A700,$1000,$0000
+	dc.w    $A86C,$A900,$1000,$0000,$AA44,$AB00,$1000,$0000
+	dc.w    $AC88,$AD00,$1000,$0000,$AE9A,$AF00,$1000,$0000
+	dc.w    $B06C,$B100,$1000,$0000,$B2D4,$B300,$1000,$0000
+	dc.w    $B42A,$B500,$1000,$0000,$B636,$B700,$1000,$0000
+	dc.w    $B875,$B900,$1000,$0000,$BA89,$BB00,$1000,$0000
+	dc.w    $BC45,$BD00,$1000,$0000,$BE24,$BF00,$1000,$0000
+	dc.w    $C0A3,$C100,$1000,$0000,$C29D,$C300,$1000,$0000		
+	dc.w    $C43F,$C500,$1000,$0000,$C634,$C700,$1000,$0000		
+	dc.w    $C87C,$C900,$1000,$0000,$CA1D,$CB00,$1000,$0000		
+	dc.w    $CC6B,$CD00,$1000,$0000,$CEAC,$CF00,$1000,$0000
+	dc.w    $D0CF,$D100,$1000,$0000,$D2FF,$D300,$1000,$0000		
+	dc.w    $D4A5,$D500,$1000,$0000,$D6D6,$D700,$1000,$0000		
+	dc.w    $D8EF,$D900,$1000,$0000,$DAE1,$DB00,$1000,$0000		
+	dc.w    $DCD9,$DD00,$1000,$0000,$DEA6,$DF00,$1000,$0000		
+	dc.w    $E055,$E100,$1000,$0000,$E237,$E300,$1000,$0000		
+	dc.w    $E47D,$E500,$1000,$0000,$E62E,$E700,$1000,$0000
+	dc.w    $E8AF,$E900,$1000,$0000,$EA46,$EB00,$1000,$0000
+	dc.w	$EC65,$ED00,$1000,$0000,$EE87,$EF00,$1000,$0000
+	dc.w	$F0D4,$F100,$1000,$0000,$F2F5,$F300,$1000,$0000
+	dc.w	$F4FA,$F500,$1000,$0000,$F62C,$F700,$1000,$0000
+	dc.w	$F84D,$F900,$1000,$0000,$FAAC,$FB00,$1000,$0000
+	dc.w	$FCB2,$FD00,$1000,$0000,$FE9A,$FF00,$1000,$0000
+	dc.w	$009A,$0106,$1000,$0000,$02DF,$0306,$1000,$0000
+	dc.w	$0446,$0506,$1000,$0000,$0688,$0706,$1000,$0000
+	dc.w	$0899,$0906,$1000,$0000,$0ADD,$0B06,$1000,$0000
+	dc.w	$0CEE,$0D06,$1000,$0000,$0EFF,$0F06,$1000,$0000
+	dc.w	$10CD,$1106,$1000,$0000,$1267,$1306,$1000,$0000
+	dc.w	$1443,$1506,$1000,$0000,$1664,$1706,$1000,$0000
+	dc.w	$1823,$1906,$1000,$0000,$1A6D,$1B06,$1000,$0000
+	dc.w	$1C4F,$1D06,$1000,$0000,$1E5F,$1F06,$1000,$0000
+	dc.w	$2055,$2106,$1000,$0000,$2267,$2306,$1000,$0000
+	dc.w	$2445,$2506,$1000,$0000,$2623,$2706,$1000,$0000
+	dc.w	$2834,$2906,$1000,$0000,$2AF0,$2B06,$1000,$0000
+
+STARFIELDSPRITEEND
+	dc.w	$0000,$0000
 
 
 ; Image of the crow man
