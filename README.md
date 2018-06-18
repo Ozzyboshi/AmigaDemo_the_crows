@@ -1,7 +1,11 @@
 # AmigaDemo - The crows
 Simple and free demo written in ASM meant for all classic Amiga computers - features copperlist, blitter and mod playing instructions
 
+#### Screenshot
 ![the crows](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/the_crows_github.png)
+
+#### Youtube video
+[![the crows](https://img.youtube.com/vi/-Xfpk7aMeOs/0.jpg)](https://www.youtube.com/watch?v=-Xfpk7aMeOs/0.jpg)
 
 
 The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down, the third is a skull wandering through a precalcuated path on the screen.
