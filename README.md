@@ -68,7 +68,12 @@ Every 16 copy and paste operations a new letter is blitted to the screen.
 ### Skull movements
 The skull movements coordinates are always precalculated and stored at TABX and TABY address.
 In the single playfile mode version only TABX is used since the sprite must say always at the top of the screen.
-In the dual playfield mode he skull follows a parabolic curve with is f(x) = (1/500)X^2+(1/50)X+1  with X>=60 and X<=320.
+In the dual playfield mode he skull follows a sinusoidal path with f(x) = 80sin((1/-45.8599)x)+130.
+
+### Adf version with splash screen
+The dual playfield version of this demo is released in adf version, ready to be written into a regular DD floppy disk.
+The adf version displays an additional splash screen while loading the demo to entertain the audience.
+The splash screen shows the image of a bloody 1.3 Workbench screen with some funny text on it.
 
 ### Assets and code
 All the assets (art pictures and music) provided with this demo are stored under the directory asset and were created by Stefano Briccolani.
