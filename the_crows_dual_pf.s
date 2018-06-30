@@ -1,12 +1,23 @@
-	include exec/types.i
-	include exec/libraries.i
-	INCLUDE "exec/exec_lib.i"
-    	INCLUDE "graphics/graphics_lib.i"
+    include exec/types.i
+    include exec/libraries.i
+    INCLUDE "exec/exec_lib.i"
+    INCLUDE "graphics/graphics_lib.i"
     	
     	
-	SECTION MAINCODE,CODE
+    SECTION MAINCODE,CODE
 	
 	;include "DaWorkBench.s"
+
+_FONT_HBYTES EQU 2
+
+; PADDERS+VPIXELS MUST BE EQUAL 32
+_FONT_HPADDER EQU 6
+_FONT_VPIXELS EQU 20
+_FONT_LPADDER EQU 6
+
+_SCREEN_HBYTES EQU 40
+_SCREEN_VRES EQU 256
+_SCROLLPLAYFIELDSPEED equ 3 ; Playfield vertical scrolling speed, value must be higher of zero
 
 DISABLE	MACRO
 	LINKLIB _LVODisable,_AbsExecBase
@@ -37,10 +48,13 @@ WAITVOUT MACRO
 	beq \1
 	ENDM
 	
-CHECKMOUSEDX MACRO
-	btst #2,$dff016
-	bne.s \1
-	bsr.s \2
+	
+LOADBITPLANE MACRO
+	MOVE.L	\1,d0
+	LEA	\2,A1
+	move.w	d0,6(a1)
+	swap	d0
+	move.w	d0,2(a1)
 	ENDM
 
 OWNBLITTER MACRO
@@ -142,26 +156,10 @@ POINTBP
 	addq.w	#8,a1
 	dbra	d1,POINTBP
 
-	MOVE.L	#PIC2_1,d0	; point playfield 2
-	LEA	BPLPOINTERS2,A1
-	move.w	d0,6(a1)
-	swap	d0
-	move.w	d0,2(a1)
-	swap	d0
-	addq.w	#8,a1
-
-	MOVE.L	#PIC2_2,d0	; point playfield 4
-	move.w	d0,6(a1)
-	swap	d0
-	move.w	d0,2(a1)
-	swap	d0
-	addq.w	#8,a1
-
-	MOVE.L	#PIC2_3,d0	; point playfield 6
-	move.w	d0,6(a1)
-	swap	d0
-	move.w	d0,2(a1)
-	swap	d0
+	; Point second playfield
+	LOADBITPLANE #PIC2_1,BPLPOINTERS2
+	LOADBITPLANE #PIC2_2,BPLPOINTERS2_1
+	LOADBITPLANE #PIC2_3,BPLPOINTERS2_2
 
 	; Start Sprite init (the skull)
 	; Sprite 0 init
@@ -216,9 +214,36 @@ vwait	WAITVEND vwait
 	; wait for left mouse click
 lclick	btst #6,$bfe001
 	bne mouse
-
-	bsr.w   mt_end ; end music
+	;bra.s enddemo
+;debouncer
+mousedown
+	btst #6,$bfe001
+	beq mousedown
 	
+spritedisable1	
+	move.l $dff004,d0
+	and.l #$1ff00,d0
+	cmp.l #303<<8,d0
+	bne.b spritedisable1
+	move.w #$20,$dff096
+
+	; Setup credit scene
+	bsr.w SetupCreditScene
+	
+mouse2
+	WAITVEND mouse2
+	bsr.w mt_music
+	bsr.w ScrollPlayfield
+
+vwait2	WAITVEND vwait2
+lclickexit
+	btst #6,$bfe001
+	bne mouse2
+
+	; Exit of the demo
+enddemo
+	move.w #$8020,$dff096
+	bsr.w mt_end
 	move.l OldCop,$dff080
 	move.w d0,$dff088
 	DISOWNBLITTER
@@ -226,6 +251,151 @@ lclick	btst #6,$bfe001
 	ENABLE
 	clr.l d0
 	rts
+
+SetupCreditScene
+	; Change background color
+	lea COLORS,a1
+	move.w #$555,2(a1)
+	
+	; Change foreground font color
+	move.w #$fff,6(a1)
+	move.w #$fff,10(a1)
+	move.w #$fff,14(a1)
+	move.w #$fff,18(a1)
+	move.w #$fff,22(a1)
+	move.w #$fff,26(a1)
+	move.w #$fff,30(a1)
+	
+	; Change colors for bitplane 2
+	lea COLORSBITPLANE2,a1
+	move.w #$444,2(a1)
+	move.w #$666,6(a1)
+	move.w #$888,10(a1)
+	move.w #$ccc,14(a1)
+	move.w #$555,18(a1)
+	move.w #$bbb,22(a1)
+	move.w #$666,26(a1)
+
+	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1
+	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1_1 
+	LOADBITPLANE #SCREEN_1,BPLPOINTERS1_2
+	
+	
+	MOVE.L	#CORVO5,d0	; store address playfield 1 (bitplanes 1-3-5)
+	LEA	BPLPOINTERS2,A1
+	MOVEQ	#3-1,D1
+POINTBPCORVO5
+	move.w	d0,6(a1)
+	swap	d0
+	move.w	d0,2(a1)
+	swap	d0
+	ADD.L	#40*256,d0
+	addq.w	#8,a1
+	dbra	d1,POINTBPCORVO5
+	
+	move.l #SCREEN_2,a1
+	add.l #_FONT_HPADDER*_SCREEN_HBYTES,a1
+	
+	moveq #48-1,d3
+ROWCYCLE	
+	
+	moveq #20-1,d1
+TEXTCYCLE
+	
+    move.l GREETINGSCHARADDRESS_1,a0
+    moveq #0,d2
+    move.b (a0),d2
+    sub.b #$20,d2
+    mulu.w #_FONT_HBYTES*_FONT_VPIXELS,d2
+    move.l d2,a2
+    add.l #FONT,a2 ; a2 now contains the address of the character into the fonts file
+
+    move.w (a2),(a1)
+    move.w 2(a2),40(a1)
+    move.w 4(a2),80(a1)
+    move.w 6(a2),120(a1)
+    move.w 8(a2),160(a1)
+    move.w 10(a2),200(a1)
+    move.w 12(a2),240(a1)
+	
+    move.w 14(a2),280(a1)
+    move.w 16(a2),320(a1)
+    move.w 18(a2),360(a1)
+    move.w 20(a2),400(a1)
+    move.w 22(a2),440(a1)
+    move.w 24(a2),480(a1)
+    move.w 26(a2),520(a1)
+	
+    move.w 28(a2),560(a1)
+    move.w 30(a2),600(a1)
+    move.w 32(a2),640(a1)
+    move.w 34(a2),680(a1)
+	
+    move.w 36(a2),720(a1)
+    move.w 38(a2),760(a1)
+	
+    addq #2,a1
+    add.l #1,GREETINGSCHARADDRESS_1
+	
+    dbra d1,TEXTCYCLE
+	
+    add.l #(25*40),a1
+    dbra d3,ROWCYCLE
+	
+    ; Init new music (fordentino)
+    move.l	#mt_data2,mt_data
+    bsr.w   mt_init ; init music
+    rts
+
+    ; This routine increases the bitplane pointer each 16 iterations
+ScrollPlayfield
+    cmp.w #0,SCROLLPLAYFIELDCOUNTER
+    bne.w NoScrollPlayfield
+    
+    ; Move bitplane pointer up
+    lea	BPLPOINTERS1_2,a1
+    move.w	2(a1),d0
+    swap d0
+    move.w	6(a1),d0
+    add.l	#40,d0
+    lea	BPLPOINTERS1_2,a1
+    move.w	d0,6(a1)
+    swap d0
+    move.w	d0,2(a1)
+    swap d0
+    
+    move.l d0,a1
+    cmp.l #SCREEN_3,a1
+    bne NoScrollPlayfield
+    LOADBITPLANE #SCREEN_1,BPLPOINTERS1_2
+
+    addq #1,SCROLLCOUNTER
+    cmp.w #_FONT_VPIXELS+_FONT_HPADDER+_FONT_LPADDER-1,SCROLLCOUNTER
+    bne NoScrollPlayfield
+    move.w #0,SCROLLCOUNTER
+      
+NoScrollPlayfield
+    addq #1,SCROLLPLAYFIELDCOUNTER
+    cmp.w #_SCROLLPLAYFIELDSPEED,SCROLLPLAYFIELDCOUNTER
+    bne.w ExitScrollPlayfield
+    move.w #0,SCROLLPLAYFIELDCOUNTER
+ExitScrollPlayfield
+    rts
+
+; Pointer to the text to print (previous row)
+GREETINGSCHARADDRESS_1 
+    dc.l WSTART
+
+; Pointer to the row in the bitplane where to print
+ROWPTR
+    dc.l SCREEN_1
+
+; How many times the rows have been been printed (starts from 0)
+SCROLLCOUNTER
+    dc.b 0,0
+
+SCROLLPLAYFIELDCOUNTER
+    dc.b 0,0
 	
 MoveStars
 	lea STARFIELDSPRITE,a0
@@ -394,11 +564,12 @@ waitblitmovetext
 ; End of movetext routine --------------------	-----------
 	
 TEXT
-	dc.b "TANTI SALUTI AMIGOSI A DR PROCTON, MCK, CIPPO, "
-	dc.b "ALEGHID, CGUGL, TRANTOR, IL GRUPPO RAMJAM, "
-	dc.b "SUKKOPERA, MISANTHROPIXEL, DIVINA, FAROX68, AMIWELL79, "
-	dc.b "SCHIUMACAL, DANYPPC, MAK73, SEIYA, Z3K E A TUTTI GLI UTENTI DI AMIGAPAGE.IT         "
-	dc.b "MUSICA DI FABIO 'BOVE' BOVELACCI AKA FRATER SINISTER - "
+;	dc.b "TANTI SALUTI AMIGOSI A DR PROCTON, MCK, CIPPO, "
+;	dc.b "ALEGHID, CGUGL, TRANTOR, IL GRUPPO RAMJAM, "
+;	dc.b "SUKKOPERA, MISANTHROPIXEL, DIVINA, FAROX68, AMIWELL79, "
+;	dc.b "SCHIUMACAL, DANYPPC, MAK73, SEIYA, Z3K E A TUTTI GLI UTENTI DI AMIGAPAGE.IT         "
+	dc.b "THE CROWS AMIGADEMO BY OZZYBOSHI AND DR.PROCTON, CLICK LEFT MOUSE BUTTON TO CONTINUE...     "
+	dc.b "MUSIC BY FABIO 'BOVE' BOVELACCI AKA FRATER SINISTER - "
 	dc.b " 1-3-1976/7-9-2014    R.I.P.                          "
 	dc.b "@BOVELACCI TWEETFEED:                "
 	dc.b "21 AGOSTO 2014   -   IO NON HO #ORECCHIE PER #INTENDERE NE #MENTE PER #CAPIRE                         "
@@ -712,7 +883,7 @@ GfxBase	dc.l 0 ; Holds the gfx base address
 OldCop	dc.l 0 ; Holds the old copper address
 GfxName	dc.b 'graphics.library',0,0 ; Name of the graphics library
 
-	include "music.s" ; Code for playing a mod file
+	include "music_ptr.s" ; Code for playing a mod file pointer version
 
 
 
@@ -751,7 +922,9 @@ SpritePointers	dc.w $120,$0000,$122,$0000,$124,$0000,$126,$0000,$128,$0000
 ; Bitplane 1 pointers
 BPLPOINTERS1
 	dc.w $e0,0,$e2,0	; BPLPT1
+BPLPOINTERS1_1
 	dc.w $e8,0,$ea,0	; BPLPT3
+BPLPOINTERS1_2
 	dc.w $f0,0,$f2,0	; BPLPT5
 
 
@@ -775,6 +948,7 @@ COLORS
 		dc.w    $18e,$f96    ; color7
 
 		; Colors for bitplane 2
+COLORSBITPLANE2	
 		dc.w    $192,$300    ; color9
 		dc.w    $194,$920    ; color10
 		dc.w    $196,$fff    ; color11
@@ -1151,10 +1325,105 @@ PIC2_3_BEFORE  dcb.b 40*256,$00
 PIC2_3	incbin "crow_banner_8_3.raw"
 PIC2_3_AFTER  dcb.b 40*256,$00
 
-;mt_data	incbin  "inkazzato.mod"
-;mt_data		incbin	"aliceoncopper.mod"
-;mt_data		incbin "knulla-kuk.mod"
-mt_data			incbin "proud2bneanderthal.mod"
+;Mod files
+mt_data			dc.l mt_data1
+mt_data1		incbin "proud2bneanderthal.mod"
+mt_data2		incbin "forden.mod"
+
 FONT	incbin "fonts.fnt"
+CORVO5
+	incbin corvo9.raw
+
+; SCREEN BUFFERS
+; Buffer UP
+BUFFER_UP
+    dcb.b _SCREEN_HBYTES*(_FONT_HPADDER+_FONT_LPADDER+_FONT_VPIXELS),$00
+
+; First screen
+SCREEN_1
+    dcb.b _SCREEN_HBYTES*(_SCREEN_VRES-0),$00
+
+; Second screen
+SCREEN_2
+    dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+    
+    dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+    dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+    dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+    dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+SCREEN_3
+
+; Buffer DOWN
+BUFFER_DOWN
+    dcb.b _SCREEN_HBYTES*(_FONT_HPADDER+_FONT_LPADDER+_FONT_VPIXELS),$00
+    
+GREETINGS_SCREEN2
+	dcb.b 40*256,$00
+GREETINGS_SCREEN3
+	dcb.b 40*256,$00
+    
+; WORDS_BUFFERS (each row 20 char)
+    dc.b '...AND THE RAVEN,   '
+WSTART_MSG
+    dc.b '   NEVER FLITTING,  '
+    dc.b '  STILL IS SITTING  '
+    dc.b '   ON THE PALLID    '
+    dc.b '   BUST OF PALLAS   '
+    dc.b '     JUST ABOVE     '
+    dc.b '  MY CHAMBER DOOR   '
+    dc.b '                    '
+    dc.b '    AND HIS EYES    '
+    dc.b 'HAVE ALL THE SEEMING'
+    dc.b '    OF A DAEMON     '
+    dc.b 'THAT IS DREAMING... '
+WSTART
+    dc.b '                    '
+    dc.b '     THE CROWS      '
+    dc.b '     AMIGADEMO      '
+    dc.b '                    '
+    dc.b ' RELEASED IN 2018   '
+    dc.b ' AND PRODUCED ONLY  '
+    dc.b ' WITH TRUE AMIGAS   '
+    dc.b '                    '
+    dc.b 'ASM CODE: OZZYBOSHI '
+    dc.b 'GRAPHICS: DR.PROCTON'
+    dc.b 'MODS:FRATER SINISTER'
+    dc.b '                    '
+    dc.b '    IN MEMORY OF    '
+    dc.b '   FABIO BOVELACCI  '
+    dc.b '1/3/1976 - 7/9/2014 '
+    dc.b '       R.I.P.       '
+    dc.b '                    '
+    dc.b '                    '
+    dc.b 'THX TO AMIGAPAGE.IT '
+    dc.b 'AND ITS MEMBERS FOR '
+    dc.b 'THEIR SUPPORT:      '
+    dc.b '                    '
+    dc.b '            ALEGHID '
+    dc.b '          AMIWELL78 '
+    dc.b '            DANYPPC '
+    dc.b '             DIVINA '
+    dc.b '            FAROK68 '
+    dc.b '              MAK73 '
+    dc.b '                MCK '   
+    dc.b '             RAMJAM '
+    dc.b '         SCHIUMACAL '
+    dc.b '              SEIYA '
+    dc.b '          SUKKOPERA '
+    dc.b '            TRANTOR '
+    dc.b '                Z3K '
+    dc.b '                    '
+    dc.b ' SPECIAL THANKS TO: '
+    dc.b '              CGUGL '
+    dc.b '             CIP060 '
+    dc.b '     MISANTHROPIXEL '
+    dc.b '                    '
+    dc.b ' SOURCECODE AT:     '
+    dc.b 'GITHUB.COM/OZZYBOSHI'
+    dc.b '                    '
+    dc.b 'DEVELOPMENT THREAD  '
+    dc.b 'AT AMIGAPAGE.IT     '
+    dc.b '                    '
+    dc.b 'THANKS FOR WATCHING '
 
 	end
