@@ -18,6 +18,7 @@ _FONT_LPADDER EQU 6
 _SCREEN_HBYTES EQU 40
 _SCREEN_VRES EQU 256
 _SCROLLPLAYFIELDSPEED equ 3 ; Playfield vertical scrolling speed, value must be higher of zero
+_FADEDELAY equ 7 ; Fade speed, decrease to get a faster speed
 
 DISABLE	MACRO
 	LINKLIB _LVODisable,_AbsExecBase
@@ -132,6 +133,12 @@ LOAD_OLD_SPRITE_POS MACRO
 	moveq	#0,d0
 	move.w  (a0),\2
 	ENDM
+
+REDUCE_COPPERLIST MACRO
+	lea CHKBOARD_COPPERLIST,a0
+	move.l #$fffffffe,(a0)
+	ENDM	
+
 	
 _AbsExecBase EQU 4
  
@@ -160,6 +167,9 @@ POINTBP
 	LOADBITPLANE #PIC2_1,BPLPOINTERS2
 	LOADBITPLANE #PIC2_2,BPLPOINTERS2_1
 	LOADBITPLANE #PIC2_3,BPLPOINTERS2_2
+	
+	; Init Checkboard (set horizontal waits and fill bitplane 6 with 1)
+	bsr.w InitCheckboard
 
 	; Start Sprite init (the skull)
 	; Sprite 0 init
@@ -194,7 +204,14 @@ POINTBP
 
 	bsr.w   mt_init ; init music
 mouse	
-	WAITVEND mouse; Wait for 255th row
+.loop; Wait for 288th row
+	move.l $dff004,d0
+	and.l #$1ff00,d0
+	cmp.l #288<<3,d0
+	bne.b .loop
+	
+	bsr.w FadeInBitplane1 ; Fade in the crowman
+	bsr.w FadeInBitplane2 ; Fade in the banner
 	
 	bsr.w MoveSprite ; Move the skull sprite on the X axis
 	bsr.w MoveSpriteY ; Move the skull sprite on the Y Axis	
@@ -203,17 +220,31 @@ mouse
 
 	
 	;move.w	#$511,COLORS+2; Uncomment to enable background flash
+	
+	cmpi.w #10,BannerCont
+	bls.w .continue ; if Bannercont<=10
+	cmpi.w #11,BannerCont 
+	bne.s .noinitcheckboard ; if Bannercont!=11 dont init checkboard
+	bsr.w InitBITCHKBOARD
+.noinitcheckboard
+	bsr.w MovChecker
+	addq.l #1,timerMovGrad
+	bra.s .nomovbanner
+	
+.continue
 	bsr.w MoveBanner ; Move the background banner up and down
+.nomovbanner	
 	bsr.w PrintChar   ; Print a new character every 16 shifts
 	bsr.w MoveText    ; Move the text from left to right
 	bsr.w MoveStars   ; Move the background stars
 	bsr.w mt_music
 	
-vwait	WAITVEND vwait
+;vwait	WAITVEND vwait
 
 	; wait for left mouse click
 lclick	btst #6,$bfe001
 	bne mouse
+
 	;bra.s enddemo
 ;debouncer
 mousedown
@@ -251,8 +282,328 @@ enddemo
 	ENABLE
 	clr.l d0
 	rts
+	
+InitBITCHKBOARD
+	LOADBITPLANE #CHECKER_RAW_1,BPLPOINTERS2
+	LOADBITPLANE #CHECKER_RAW_2,BPLPOINTERS2_1
+	LOADBITPLANE #CHECKER_RAW_3,BPLPOINTERS2_2
+	lea CHKBOARD_COPPERLIST,a0
+	move.l #$a903fffe,(a0)
+	addq #1,BannerCont
+	rts
+	
+InitCheckboard
+	move.l #$2000,dirposChecker
+	bsr.w initCheckerH
+	;lea CHECKER_RAW_3+40*128,a0
+	;move.w #40*158-1,d0
+;.fill	move.b #-1,(a0)+
+;	dbf d0,.fill
+	
+initCheckerH
+	lea	BufHL(pc),a0
+	move.w	#768,d4
+	move.w	#64-1,d3
+.loop1	move.w	#26-1,d2
+	move.w	d4,d0
+.loop2	move.w	d0,d1
+	asr.w	#1,d1
+	addi.w	#128,d1
+	move.l	#$4b00,d5
+	divu.w	d1,d5
+	addi.w	#133,d5
+	move.b	d5,(a0)+
+	subi.w	#32,d0
+	dbf	d2,.loop2
+	subi.w	#1,d4
+	dbf	d3,.loop1
+	rts
+	
+BufHL		ds.b	64*26
+
+posChecker	ds.l	1
+incposChecker	ds.l	1
+dirposChecker	ds.l	1
+
+chkval1		ds.l	1
+chkval2		ds.l	1
+chkval3		ds.w	1
+chkval4		ds.w	1
+
+flagPal 	ds.w	1
+timerMovGrad	ds.l	1
+
+CheckerColTab
+	dc.w $000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000
+	dc.w $0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000
+	dc.w $0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000,$0000,$000f
+	dc.w $0000,$0008,$000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008
+	dc.w $000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000
+	dc.w $0008,$0000,$0000,$000f,$0000,$0008,$001f,$0000,$0018,$0000
+	dc.w $0000,$002f,$0000,$0018,$003f,$0000,$0028,$0000,$0000,$004f
+	dc.w $0000,$0028,$005f,$0000,$0038,$0000,$0000,$006f,$0000,$0038
+	dc.w $007f,$0000,$0048,$0000,$0000,$008f,$0000,$0048,$009f,$0000
+	dc.w $0058,$0000,$0000,$00af,$0000,$0058,$00bf,$0000,$0068,$0000
+	dc.w $0000,$00cf,$0000,$0068,$00df,$0000,$0078,$0000,$0000,$00ef
+	dc.w $0000,$0078,$00ff,$0000,$0088,$0000,$0000,$00ff,$0000,$0088
+	dc.w $00ef,$0000,$0078,$0000,$0000,$00df,$0000,$0078,$00cf,$0000
+	dc.w $0068,$0000,$0000,$00bf,$0000,$0068,$00af,$0000,$0058,$0000
+	dc.w $0000,$009f,$0000,$0058,$008f,$0000,$0048,$0000,$0000,$007f
+	dc.w $0000,$0048,$006f,$0000,$0038,$0000,$0000,$005f,$0000,$0038
+	dc.w $004f,$0000,$0028,$0000,$0000,$003f,$0000,$0028,$002f,$0000
+	dc.w $0018,$0000,$0000,$001f,$0000,$0018,$000f,$0000,$0008,$0000
+	dc.w $0000,$000f,$0000,$0008,$010f,$0000,$0108,$0000,$0000,$020f
+	dc.w $0000,$0108,$030f,$0000,$0208,$0000,$0000,$040f,$0000,$0208
+	dc.w $050f,$0000,$0308,$0000,$0000,$060f,$0000,$0308,$070f,$0000
+	dc.w $0408,$0000,$0000,$080f,$0000,$0408,$090f,$0000,$0508,$0000
+	dc.w $0000,$0a0f,$0000,$0508,$0b0f,$0000,$0608,$0000,$0000,$0c0f
+	dc.w $0000,$0608,$0d0f,$0000,$0708,$0000,$0000,$0e0f,$0000,$0708
+	dc.w $0f0f,$0000,$0808,$0000,$0000,$0f0f,$0000,$0808,$0e0f,$0000
+	dc.w $0708,$0000,$0000,$0d0f,$0000,$0708,$0c0f,$0000,$0608,$0000
+	dc.w $0000,$0c0f,$0000,$0608,$0a0f,$0000,$0508,$0000,$0000,$090f
+	dc.w $0000,$0508,$080f,$0000,$0408,$0000,$0000,$070f,$0000,$0408
+	dc.w $060f,$0000,$0308,$0000,$0000,$050f,$0000,$0308,$040f,$0000
+	dc.w $0208,$0000,$0000,$030f,$0000,$0208,$020f,$0000,$0108,$0000
+	dc.w $0000,$010f,$0000,$0108,$000f,$0000,$0008,$0000,$0000,$000f
+	dc.w $0000,$0008,$011e,$0000,$0008,$0000,$0000,$022d,$0000,$0117
+	dc.w $033c,$0000,$0117,$0000,$0000,$044b,$0000,$0226,$055a,$0000
+	dc.w $0226,$0000,$0000,$0669,$0000,$0335,$0778,$0000,$0335,$0000
+	dc.w $0000,$0887,$0000,$0444,$0996,$0000,$0444,$0000,$0000,$0aa5
+	dc.w $0000,$0553,$0bb4,$0000,$0553,$0000,$0000,$0cc3,$0000,$0662
+	dc.w $0dd2,$0000,$0662,$0000,$0000,$0ee1,$0000,$0771,$0ff0,$0000
+	dc.w $0771,$0000,$0000,$0ff0,$0000,$0880,$0ee1,$0000,$0771,$0000
+	dc.w $0000,$0dd2,$0000,$0771,$0cc3,$0000,$0662,$0000,$0000,$0bb4
+	dc.w $0000,$0662,$0aa5,$0000,$0553,$0000,$0000,$0996,$0000,$0553
+	dc.w $0887,$0000,$0444,$0000,$0000,$0778,$0000,$0444,$0669,$0000
+	dc.w $0335,$0000,$0000,$055a,$0000,$0335,$044b,$0000,$0226,$0000
+	dc.w $0000,$033c,$0000,$0226,$022d,$0000,$0117,$0000,$0000,$011e
+	dc.w $0000,$0117,$000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008
+	dc.w $000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000
+	dc.w $0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000
+	dc.w $0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000,$0000,$000f
+	dc.w $0000,$0008,$000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008
+	dc.w $000f,$0000,$0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000
+	dc.w $0008,$0000,$0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000
+	dc.w $0000,$000f,$0000,$0008,$000f,$0000,$0008,$0000,$0000,$000f
+	dc.w $0000,$0008
+CheckerColTabEnd
+
+
+MovChecker
+	move.w	posChecker,d0
+	andi.w	#63,d0
+	mulu.w	#26,d0
+	lea	BufHL(pc),a0
+	adda.l	d0,a0
+	move.w	posChecker,d0
+	andi.l	#$1FC0,d0
+	asr.l	#3,d0
+	lea	CheckerColTabEnd(pc),a1
+	suba.l	d0,a1
+	tst.w	d0
+	bne.s	.cont
+	lea	CheckerColTab(pc),a1
+.cont	lea	CLChecker,a2
+	move.w	(a1)+,CLcol+2
+	move.w	(a1)+,CLcol2+2
+	adda.l	#4,a1
+	cmpa.l	#CheckerColTabEnd,a1
+	bne.s	.notyet
+	lea	CheckerColTab(pc),a1
+.notyet	
+	move.w	#13-1,d0
+	clr.w	d1
+	clr.w	flagPal
+.loop
+	clr.w	d1
+	move.b	(a0)+,d1
+	move.b	(a0)+,d7
+	cmpi.w	#144,d1
+	bgt.s	.nopal
+	tst.w	flagPal
+	bne.s	.nopal
+	move.w	#255,flagPal
+	move.l	#$FFDFFFFE,(a2)+
+.nopal	move.b	d1,(a2)+
+	move.b	#1,(a2)+
+	move.w	#$FF00,(a2)+
+	move.w	#$198,(a2)+
+	move.w	(a1)+,(a2)+
+	move.w	#$19C,(a2)+
+	move.w	(a1)+,(a2)+
+	move.w	#$19A,(a2)+
+	move.w	(a1)+,(a2)+
+	move.w	#$19E,(a2)+
+	move.w	(a1)+,(a2)+
+	cmpa.l	#CheckerColTabEnd,a1
+	blt.s	.notyet2
+	lea	CheckerColTab(pc),a1
+.notyet2
+	dbf	d0,.loop
+
+	move.l	incposChecker,d0
+	add.l	d0,posChecker
+	cmpi.l	#200,timerMovGrad
+	blt.s	timer200
+	move.l	dirposChecker,d0
+	add.l	d0,incposChecker
+	cmpi.w	#8,incposChecker
+	bne.s	.pos
+	cmpi.l	#600,timerMovGrad
+	bgt.s	timer600
+	neg.l	dirposChecker
+.pos
+	cmpi.w	#-8,incposChecker
+	bne.s	.skip
+	neg.l	dirposChecker
+.skip
+	bra.s	timer200
+
+timer600:
+	clr.l	dirposChecker
+
+timer200:
+	tst.w	flagPal
+	bne.s	.nopal
+	move.l	#$FFDFFFFE,(a2)+
+.nopal	
+	move.l	#$4b01FF00,(a2)+
+	move.l	#$1900000,(a2)+
+	move.l	#$1920000,(a2)+
+	move.l	#$1940000,(a2)+
+	move.l	#$1980000,(a2)+
+	move.l	#$19A0000,(a2)+
+	move.l	#$19B0000,(a2)+
+	move.l	#$19C0000,(a2)+
+	move.l	#$19E0000,(a2)+
+	move.l	#$1080000,(a2)+
+	move.l	#$1800000,(a2)+
+	move.l	#$10A0000,(a2)+
+	move.l	#-2,(a2)+
+	rts
+
+	
+FadeInBitplane1
+        ; Delay
+        cmp.w #_FADEDELAY,FadeDelayCounter
+        bne.s EndFadeIn
+        move.w  #0,FadeDelayCounter
+
+        ; Do not perform fade after FadeIn has been called 16 times
+        cmp.w   #17,FadeCounter
+        beq.s   EndFadeIn
+
+        ; Put FadeCounter in d0
+        moveq   #0,d0
+        move.w  FadeCounter(PC),d0
+
+        moveq   #7-1,d7 ; Number of colors
+        lea     TabColorsPic(PC),a0 ; Load colors table in a0
+        lea     COLORS+6,a1         ; Load copperlist colors in a1 (color 0 is skipped)
+        
+        bsr.s   Fade    ; Call the fade routine
+        addq.w  #1,FadeCounter  ; Increase Fade counter by one
+EndFadeIn
+        addq.w  #1,FadeDelayCounter
+        rts
+
+FadeDelayCounter
+        dc.w 0
+
+; Fade counter - expected to contain values from 0 to 17
+FadeCounter
+        dc.w 0
+
+TabColorsPic
+        dc.w $004    ; color1
+        dc.w $532    ; color2
+        dc.w $fff    ; color3
+        dc.w $840    ; color4
+        dc.w $c75    ; color5
+        dc.w $a00    ; color6
+        dc.w $f96    ; color7
+        
+FadeInBitplane2
+	; Delay
+	cmp.w #_FADEDELAY,FadeDelayCounter2
+	bne.s EndFadeIn2
+	move.w  #0,FadeDelayCounter2
+
+	; Do not perform fade after FadeIn has been called 16 times
+	cmp.w	#17,FadeCounter2
+	beq.s	EndFadeIn2
+
+	; Put FadeCounter in d0
+	moveq	#0,d0
+	move.w	FadeCounter2(PC),d0
+
+	moveq	#7-1,d7	; Number of colors
+	lea	TabColorsBanner(PC),a0 ; Load colors table in a0
+	lea	COLORSBITPLANE2+2,a1	    ; Load copperlist colors in a1
+	
+	bsr.s	Fade	; Call the fade routine
+	addq.w	#1,FadeCounter2	; Increase Fade counter by one
+EndFadeIn2
+	addq.w  #1,FadeDelayCounter2
+	rts
+
+FadeDelayCounter2
+	dc.w 0
+
+; Fade counter - expected to contain values from 0 to 17
+FadeCounter2
+	dc.w 0
+
+TabColorsBanner
+	dc.w $0000
+	dc.w $0811
+	dc.w $0faf
+	dc.w $0400
+	dc.w $0d11
+	dc.w $0f47
+	dc.w $0f6d
+
+; Actual fade routine
+Fade
+ColorLoop
+        moveq   #0,d1           ; clear d1
+        moveq   #0,d2           ; clear d2
+
+; Get red value of the final color, multiply it for the fade counter
+        ; and divide by 16, store the result in the copperlist
+        move.b  (a0)+,d1
+        mulu.w  d0,d1
+        lsr.w   #4,d1
+        move.b  d1,(a1)+
+
+        ; Get green value of the final color, multiply it for the fade counter
+        ; and divide by 16
+        move.b  (a0),d1
+        lsr.b   #4,d1
+        mulu.w  d0,d1
+        and.b   #$f0,d1
+
+        ; Get blu value of the final color, multiply it for the fade counter
+        ; and divide by 16
+        move.b  (a0)+,d2
+        and.b   #$0f,d2
+        mulu.w  d0,d2
+        lsr.w   #4,d2
+
+        ; join blu and green in d1 and store them in copperlist
+        or.w    d2,d1
+        move.b  d1,(a1)+
+
+        ; Point next color in copperlist
+        addq.w  #2,a1
+        dbra    d7,ColorLoop    ; Loop for each color
+        rts
+
 
 SetupCreditScene
+
+	REDUCE_COPPERLIST ; Exlude checkerboard copperlist
+	
 	; Change background color
 	lea COLORS,a1
 	move.w #$555,2(a1)
@@ -499,6 +850,10 @@ PrintChar
 			 ; in this case we start over from the beginning
 	
 	; start of reset section (return to the first character)
+	
+	; force move to next demo section
+	bra.w spritedisable1
+	
 	lea TEXT(pc),a0
 	move.l #TEXT,charaddress
 	move.b (a0),d2
@@ -852,6 +1207,7 @@ MettiSu
 	
 	;move.w	#$fff,COLORS+2 ; Uncomment to enable background flash
 	
+	addq.w #1,BannerCont
 	move.b #$ff,SuGiu
 	rts
 	
@@ -875,7 +1231,8 @@ Finito
 ; Flag - 0 = the banner is going down, $ff is going up	
 SuGiu
 	dc.b 0,0
-		
+BannerCont
+	dc.b 0,0		
 	
 ; Some variables
 	
@@ -939,23 +1296,23 @@ BPLPOINTERS2_2
 COLORS	
 		; Colors for bitplane 1
 		dc.w    $180,$622    ; color0 (transparency for bitplane 1)
-		dc.w    $182,$004    ; color1
-		dc.w    $184,$532    ; color2
-		dc.w    $186,$fff    ; color3
-		dc.w    $188,$840    ; color4
-		dc.w    $18a,$c75    ; color5
-		dc.w    $18c,$a00    ; color6
-		dc.w    $18e,$f96    ; color7
+		dc.w    $182,$000    ; color1
+		dc.w    $184,$000    ; color2
+		dc.w    $186,$000    ; color3
+		dc.w    $188,$000    ; color4
+		dc.w    $18a,$000    ; color5
+		dc.w    $18c,$000    ; color6
+		dc.w    $18e,$000    ; color7
 
 		; Colors for bitplane 2
 COLORSBITPLANE2	
-		dc.w    $192,$300    ; color9
-		dc.w    $194,$920    ; color10
-		dc.w    $196,$fff    ; color11
-		dc.w    $198,$600    ; color12
-		dc.w    $19a,$f00    ; color13
-		dc.w    $19c,$d62    ; color14
-		dc.w    $19e,$fa6    ; color15
+		dc.w    $192,$0    ; color9
+		dc.w    $194,$0    ; color10
+		dc.w    $196,$0    ; color11
+		dc.w    $198,$0    ; color12
+		dc.w    $19a,$0    ; color13
+		dc.w    $19c,$0    ; color14
+		dc.w    $19e,$0    ; color15
 
 		;sprite colors;
 		dc.w    $1a2,$333    ; skull color 1
@@ -988,7 +1345,52 @@ COLORSBITPLANE2
 		dc.w	$4a07,$FFFE  ; Wait to differentiate color of the text
 		dc.w    $182,$000    ; color1
 		
-		dc.w $FFFF,$FFFE
+; CHECKBOARD START
+CHKBOARD_COPPERLIST 
+	dc.w 	$FFFF,$FFFE
+	dc.w    $a903,$fffe,$1a0,$0ff0
+	dc.w    $190,$0000,$192,$0000,$194,$0000,$196,$0000,$198,$0000
+        dc.w    $19A,$0222,$19C,$0E0E,$19E,$0505
+
+	dc.w    $Aa01,$ff00     ; skip
+
+CLcol   dc.w    $198,$0
+CLcol2  dc.w    $19C,$0
+
+CLChecker
+	dc.w	$ab01,$fffe,$19c,$000f,$198,0000
+	dc.w	$ac01,$fffe,$198,$000e,$19c,0000
+	dc.w	$ad01,$fffe,$19c,$000f,$198,0000
+	dc.w	$ae01,$fffe,$198,$000e,$19c,0000
+	dc.w	$b001,$fffe,$19c,$000f,$198,0000
+	dc.w	$b101,$fffe,$198,$000e,$19c,0000
+	dc.w	$b301,$fffe,$19c,$000f,$198,0000
+	dc.w	$b501,$fffe,$198,$000e,$19c,0000
+	dc.w	$b701,$fffe,$19c,$000f,$198,0000
+	dc.w	$b901,$fffe,$198,$000e,$19c,0000
+	dc.w	$bb01,$fffe,$19c,$000f,$198,0000
+	dc.w	$be01,$fffe,$198,$000e,$19c,0000
+	dc.w	$c101,$fffe,$19c,$000f,$198,0000
+	dc.w	$c401,$fffe,$198,$000e,$19c,0000
+	dc.w	$c801,$fffe,$19c,$000d,$198,0000
+	dc.w	$cb01,$fffe,$198,$000c,$19c,0000
+	dc.w	$d001,$fffe,$19c,$000b,$198,0000
+	dc.w	$d501,$fffe,$198,$000a,$19c,0000
+	dc.w	$db01,$fffe,$19c,$0009,$198,0000
+	dc.w	$e101,$fffe,$198,$0008,$19c,0000
+	dc.w	$e901,$fffe,$19c,$0007,$198,0000
+
+	dc.w	$f201,$fffe,$198,6,$19a,3,$19e,0,$19c,0
+	dc.w	$fd01,$fffe,$19c,5,$19e,3,$19a,0,$198,0
+	dc.w	$ffdf,$fffe		; pal
+	dc.w	$0a01,$fffe,$19a,5,$198,3,$19c,0,$19e,0
+	dc.w	$1b01,$fffe,$19a,0,$198,0,$19c,0,$19e,0
+
+	dc.w	$108,0,$180,0,$10a,0
+	dc.l	-2
+	dcb.l	112,$ffffffff	
+; CHECKBOARD END
+
 ; ------------------------------------------------------------------
 ;  ---- COPPERLIST END ---------------------------------------------
 ; ------------------------------------------------------------------
@@ -1313,17 +1715,26 @@ STARFIELDSPRITEEND
 PIC	incbin	"crow_img_8.raw"
 ; Image of the banner
 PIC2_1_BEFORE  dcb.b 40*256,$00
-PIC2
-PIC2_1	incbin "crow_banner_8_1.raw"
+;PIC2
+PIC2_1	incbin "crow2_8col_3_1.raw"
 PIC2_1_AFTER  dcb.b 40*256,$00
 
 PIC2_2_BEFORE  dcb.b 40*256,$00
-PIC2_2	incbin "crow_banner_8_2.raw"
+PIC2_2	incbin "crow2_8col_3_2.raw"
 PIC2_2_AFTER  dcb.b 40*256,$00
 
 PIC2_3_BEFORE  dcb.b 40*256,$00
-PIC2_3	incbin "crow_banner_8_3.raw"
+PIC2_3	incbin "crow2_8col_3_3.raw""
 PIC2_3_AFTER  dcb.b 40*256,$00
+
+; CHECKBOARD BITPLANES
+CHECKER_RAW_1
+	dcb.b 40*256,$00
+CHECKER_RAW_2
+	incbin "check.raw"
+CHECKER_RAW_3
+	dcb.b 40*128,$00
+	dcb.b 40*128,$ff
 
 ;Mod files
 mt_data			dc.l mt_data1
