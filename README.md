@@ -85,22 +85,29 @@ The checkboard is stored on even bitplanes (playfield 2) in this way:
 - bitplane 2 : set to zero
 - bitplane 4 : contains the check.iff (2 colors raw version)
 - bitplane 6 : filled with 0 for the first 128 rows and with 1 for the second 128 rows, this is required to show transparency on the top half of the screen and to show the checkboard without transparency on the bottom half.
+
 The checkboard effect is then achieved in copperlist using the wait instruction: then the raster position reaches some pre-calculated vertical position, the colors are swapped.
 In order to achieve the movement effect we change the wait instructions on the copperlist, the new values are stored in the BufHL buffer.
+
 BufHL is a preallocated 64*26 memory portion and it is initialized by the initCheckerH routine.
 Each time MovChecker routine is excuted, it searches the new wait values within BufHL according to posChecker which contains the current position of the checkboard.
+
 The MovChecker routine is also responsible for color swapping when the 64 times cycles has ended, colors are stored in the CheckerColTab buffer.
+
 The checkboard move instructions on this demo are a modified version of an old CBC cracktro of the game "Heroes of the Lance" written by Freddy (a Frenchman asm programmer who apparently lives near Versailles). 
 The vertical checkboard was drawn by Dr. Procton.
 
 ### Fade in
 At the very beginning of the demo, the crowman and the banner fade from black to theirs real colors in 16 phases, each phase is executed every 7 frames.
+
 Each component of the RGB color is divided by 16 and multiplied by a counter from zero (black) to 16 (full original color).
 The fade in colors involved are from color 1 to 7 (first playfield) and from 9 to 15 (second playfield).
+
 The fade in effect are calculated by FadeInBitplane1 and FadeInBitplane2 routines.
 
 ### Credit scene
 The demo ends with a credit scene, nothing complicated here, dual playfield is always ON, on the background there is an image of a crow, on the foreground some text copied from memory to the front playfield.
+
 The pointer of the playfield is always increased giving the illusion of text crolling towards the top of the screen.
 
 ### Adf version with splash screen
