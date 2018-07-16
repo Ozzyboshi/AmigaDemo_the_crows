@@ -8,8 +8,7 @@ Simple and free demo written in ASM meant for all classic Amiga computers - feat
 ![credits](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/screenshots/credits.png)
 
 #### Youtube video
-[![the crows](https://img.youtube.com/vi/-Xfpk7aMeOs/0.jpg)](https://www.youtube.com/watch?v=-Xfpk7aMeOs/0.jpg)
-
+[![the crows](https://img.youtube.com/vi/d8W53lmGoSg/0.jpg)](https://www.youtube.com/watch?v=d8W53lmGoSg)
 
 The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down (from version 1.5 there's also a checkboard on background), the third is a skull wandering through a precalcuated path on the screen.In addition there's a splashscreen image (only adf version) and a crow screen for the credit scene.
 
