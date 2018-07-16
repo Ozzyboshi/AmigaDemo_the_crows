@@ -1,14 +1,17 @@
 # AmigaDemo - The crows
 Simple and free demo written in ASM meant for all classic Amiga computers - features copperlist, blitter and mod playing instructions
 
-#### Screenshot
-![the crows](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/the_crows_github.png)
+#### Screenshots
+![intro](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/screenshots/intro.png)
+![demo1](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/screenshots/demo1.png)
+![demo2](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/screenshots/demo2.png)
+![credits](https://raw.githubusercontent.com/Ozzyboshi/AmigaDemo_the_crows/master/screenshots/credits.png)
 
 #### Youtube video
 [![the crows](https://img.youtube.com/vi/-Xfpk7aMeOs/0.jpg)](https://www.youtube.com/watch?v=-Xfpk7aMeOs/0.jpg)
 
 
-The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down, the third is a skull wandering through a precalcuated path on the screen.
+The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down (from version 1.5 there's also a checkboard on background), the third is a skull wandering through a precalcuated path on the screen.In addition there's a splashscreen image (only adf version) and a crow screen for the credit scene.
 
 The skull is made of 2 sprites (SPRITES0 and SRITES1) side by side, this is mandatory since Amiga hardware allows sprites to have only 16 pixel width, to get more you must combine more sprites side to side.
 During the demo a mod song is also played.
@@ -75,6 +78,30 @@ The skull movements coordinates are always precalculated and stored at TABX and 
 In the single playfile mode version only TABX is used since the sprite must say always at the top of the screen.
 In the dual playfield mode he skull follows a sinusoidal path with f(x) = 80sin((1/-45.8599)x)+130.
 The dual playfield mode features also a background starfield, this is achieved recycling 127 times the third sprite register which contains only one bit set.The stars are gathered together into 3 groups, each one is characterized by a different speed: low, medium and high.
+
+### Checkboard
+From version 1.5 there's also a checkboard taking the scene on the background of the demo, it appears after that the banner has reached the top 10 times.
+The checkboard is stored on even bitplanes (playfield 2) in this way:
+- bitplane 2 : set to zero
+- bitplane 4 : contains the check.iff (2 colors raw version)
+- bitplane 6 : filled with 0 for the first 128 rows and with 1 for the second 128 rows, this is required to show transparency on the top half of the screen and to show the checkboard without transparency on the bottom half.
+The checkboard effect is then achieved in copperlist using the wait instruction: then the raster position reaches some pre-calculated vertical position, the colors are swapped.
+In order to achieve the movement effect we change the wait instructions on the copperlist, the new values are stored in the BufHL buffer.
+BufHL is a preallocated 64*26 memory portion and it is initialized by the initCheckerH routine.
+Each time MovChecker routine is excuted, it searches the new wait values within BufHL according to posChecker which contains the current position of the checkboard.
+The MovChecker routine is also responsible for color swapping when the 64 times cycles has ended, colors are stored in the CheckerColTab buffer.
+The checkboard move instructions on this demo are a modified version of an old CBC cracktro of the game "Heroes of the Lance" written by Freddy (a Frenchman asm programmer who apparently lives near Versailles). 
+The vertical checkboard was drawn by Dr. Procton.
+
+### Fade in
+At the very beginning of the demo, the crowman and the banner fade from black to theirs real colors in 16 phases, each phase is executed every 7 frames.
+Each component of the RGB color is divided by 16 and multiplied by a counter from zero (black) to 16 (full original color).
+The fade in colors involved are from color 1 to 7 (first playfield) and from 9 to 15 (second playfield).
+The fade in effect are calculated by FadeInBitplane1 and FadeInBitplane2 routines.
+
+### Credit scene
+The demo ends with a credit scene, nothing complicated here, dual playfield is always ON, on the background there is an image of a crow, on the foreground some text copied from memory to the front playfield.
+The pointer of the playfield is always increased giving the illusion of text crolling towards the top of the screen.
 
 ### Adf version with splash screen
 The dual playfield version of this demo is released in adf version, ready to be written into a regular DD floppy disk.
