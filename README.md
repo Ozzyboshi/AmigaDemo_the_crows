@@ -119,7 +119,7 @@ All the assets (art pictures and music) provided with this demo are stored under
 The assembly code, written by me, is strongly inspired from the Ramjam italian course freely downloadable at
 http://corsodiassembler.ramjam.it/
 
-### Demo running
+### How to run the demo
 There are a lot of ways to run this demo:
 - Open the_crows.s (or the_crows_dual_pf) for the dual playfield version) in your devpac assembler and assemble/run it.
 - Run directly the_crows (or the_crows_dual_pf) executable file from your workbench double clicking on it.
