@@ -239,7 +239,11 @@ mouse
 	bsr.w MoveStars   ; Move the background stars
 	bsr.w mt_music
 	
-;vwait	WAITVEND vwait
+.loopend ; Wait to exit 288th row (for faster processors like 68040)
+	move.l $dff004,d0
+	and.l #$1ff00,d0
+	cmp.l #288<<3,d0
+	beq.b .loopend
 
 	; wait for left mouse click
 lclick	btst #6,$bfe001
@@ -266,7 +270,7 @@ mouse2
 	bsr.w mt_music
 	bsr.w ScrollPlayfield
 
-vwait2	WAITVEND vwait2
+vwait2	WAITVOUT vwait2
 lclickexit
 	btst #6,$bfe001
 	bne mouse2
@@ -1828,11 +1832,12 @@ WSTART
     dc.b '              CGUGL '
     dc.b '             CIP060 '
     dc.b '     MISANTHROPIXEL '
+    dc.b '     THE DARK CODER '
     dc.b '                    '
-    dc.b ' SOURCECODE AT:     '
+    dc.b ' SOURCE CODE AT:    '
     dc.b 'GITHUB.COM/OZZYBOSHI'
     dc.b '                    '
-    dc.b 'DEVELOPMENT THREAD  '
+    dc.b 'DEVELOPEMENT THREAD '
     dc.b 'AT AMIGAPAGE.IT     '
     dc.b '                    '
     dc.b 'THANKS FOR WATCHING '
