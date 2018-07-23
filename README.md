@@ -125,11 +125,9 @@ There are a lot of ways to run this demo:
 - Run directly the_crows (or the_crows_dual_pf) executable file from your workbench double clicking on it.
 - Write directly the adf files that you find under https://github.com/Ozzyboshi/AmigaDemo_the_crows/releases on a real or emulated floppy disk and boot from it.
 
-The demos has been written and tested on a real Amiga 600 with 2Mb of Chip ram and 2Mb of PCMCIA Fast ram but It really should work on all classic Amigas.
+The demo has been written and tested on a real Amiga 600 with 2Mb of Chip ram and 2Mb of PCMCIA Fast ram but It really should work on all classic Amigas.
 
 Additional tests were made on a Aca500+ mounted on a real A500+ with kickstart 3.1 and 1.3 , no problems were found with this configurations either.
-
-If you own a Vampire you'll probably run the demo faster than expected, if this is the case, try disabling the cache memory to run it properly.
 
 ### Future
 Despite the simplicity of this demo, It can be useful for learning puroposes and as a base code for a much complex one.
