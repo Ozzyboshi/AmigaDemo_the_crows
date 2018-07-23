@@ -12,8 +12,9 @@ Simple and free demo written in ASM meant for all classic Amiga computers - feat
 
 The demo contains 3 different images, the first one is a static picture of a bleeding man, the second is a banner with "the crown" text on it moving endlessly up and down (from version 1.5 there's also a checkboard on background), the third is a skull wandering through a precalcuated path on the screen.In addition there's a splashscreen image (only adf version) and a crow screen for the credit scene.
 
-The skull is made of 2 sprites (SPRITES0 and SRITES1) side by side, this is mandatory since Amiga hardware allows sprites to have only 16 pixel width, to get more you must combine more sprites side to side.
-During the demo a mod song is also played.
+The skull is made up of 2 sprites (HARDWARE SPRITE0 and SPRITE1) drawn side by side, this is mandatory since Amiga hardware allows sprites to have only 16 pixel width.
+During the demo 2 mod song is also played, the first one is titled "Proud to be neanderthal" and it's used on the first part of the demo, the second one (fordentino) act as a background music for the ending credit scene.
+Both mods were released years ago by Fabio Bovelacci (aka Frater Sinister).
 
 ### Versions (single playfield mode)
 This demo comes in 2 different version, the first (file the_crows.s) uses a single playfield mode (no more developed), the second (file the_crows_dual_pf.s) uses a dual playfield mode.
