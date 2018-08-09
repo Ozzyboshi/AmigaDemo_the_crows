@@ -99,6 +99,33 @@ BLTCPY2 MACRO
         move.w \4,$dff058 ; BLTSIZE
         ENDM
         
+BLTCPY3 MACRO
+	bsr.w waitblitter
+        move.w #$FFFF,$dff044 ; BLTAFWM - Blitter first word mask for source A
+        move.w #$FFFF,$dff046 ; BLTALWM - Blitter last word mask for source A
+        move.w #$09f0,$dff040 ; BLTCON0 - Use A D DMA Channels
+        move.w #$0000,$dff042 ; BLTCON1
+        move.w #$0000,$dff064 ; BLTAMOD
+        move.w #$0000,$dff066 ; BLTDMOD
+        move.l \1,$dff050     ; BLTAPT - Data Source
+        move.l \2,$dff054     ; BLTDPT - Destination
+        move.w \3,$dff058 ; BLTSIZE
+        ENDM
+
+BLTCLEAR MACRO
+	bsr.w waitblitter
+        move.w #$FFFF,$dff044 ; BLTAFWM - Blitter first word mask for source A
+        move.w #$FFFF,$dff046 ; BLTALWM - Blitter last word mask for source A
+        move.w #$0100,$dff040 ; BLTCON0 - Use A D DMA Channels
+        move.w #$0000,$dff042 ; BLTCON1
+        move.w #$0000,$dff064 ; BLTAMOD
+        move.w #$0000,$dff066 ; BLTDMOD
+        move.l \1,$dff050     ; BLTAPT - Data Source
+        move.l \2,$dff054     ; BLTDPT - Destination
+        move.w \3,$dff058 ; BLTSIZE
+        ENDM
+
+        
 PRINT_EYES_TOP_RIGHT MACRO
 	move.l #$cf9e377f,LEFTSKULLEYES1
 	move.l #$afde57ff,LEFTSKULLEYES2
@@ -137,8 +164,16 @@ LOAD_OLD_SPRITE_POS MACRO
 REDUCE_COPPERLIST MACRO
 	lea CHKBOARD_COPPERLIST,a0
 	move.l #$fffffffe,(a0)
-	ENDM	
-
+	ENDM
+	
+BALLOBJ MACRO
+	dc.w 220,128    ; x,y
+        dc.l ballpic
+        dc.l ballpicmsk
+        dc.l BALLBITPLANE_1
+        dc.w 0
+        dc.w 32*64+6/2  ; bltsize
+	ENDM
 	
 _AbsExecBase EQU 4
  
@@ -200,14 +235,22 @@ POINTBP
 	move.l $0c00,$dff106 ; BPLCON3
 	
 	; enable dma sprite
-	move.w #$83a0,$dff096
+	move.w #$87a0,$dff096
 
 	bsr.w   mt_init ; init music
+	
+	; Init ball coordinates and image+mask
+	bsr.w BobsCoords
+	bsr.w BobsNewPos
+	lea ballpic,a0
+	move.l a0,ball
+	lea ballpicmsk,a0
+	move.l a0,ballmask
 mouse	
-.loop; Wait for 288th row
+.loop; Wait for vblank
 	move.l $dff004,d0
 	and.l #$1ff00,d0
-	cmp.l #288<<3,d0
+	cmp.l #303<<8,d0
 	bne.b .loop
 	
 	bsr.w FadeInBitplane1 ; Fade in the crowman
@@ -217,18 +260,45 @@ mouse
 	bsr.w MoveSpriteY ; Move the skull sprite on the Y Axis	
 	bsr.w MoveSpriteEyes ; Move the skull sprite eyes according to
 			     ; the screen position
-
-	
-	;move.w	#$511,COLORS+2; Uncomment to enable background flash
-	
-	cmpi.w #10,BannerCont
-	bls.w .continue ; if Bannercont<=10
-	cmpi.w #11,BannerCont 
-	bne.s .noinitcheckboard ; if Bannercont!=11 dont init checkboard
+			     
+	; Checkboard starts at 25
+	cmpi.w #25,BannerCont
+	bls.w .continue1 ; if Bannercont<=25
+	cmpi.w #26,BannerCont 
+	bne.s .noinitcheckboard ; if Bannercont!=26 dont init checkboard
+	bclr.b #6,BPLCON2	; Force crowman on top during checkboard
 	bsr.w InitBITCHKBOARD
 .noinitcheckboard
 	bsr.w MovChecker
 	addq.l #1,timerMovGrad
+	bra.w .nomovbanner
+
+	
+	;move.w	#$511,COLORS+2; Uncomment to enable background flash
+.continue1
+	; if Bannercont>=5  switch planes (crowman to 2nd playfield and
+	; empty bitplanes on first playfield to print bobs balls
+	cmpi.w #15,BannerCont
+	bls.w .continue	; if Bannercont<=5
+	cmpi.w #16,BannerCont ; if Bannercont==6 (first time only) switch playfield
+	bne.s .moveballs
+	
+	; switch the playfield, the crowman on the back, the balls take the main scene
+	LOADBITPLANE #BALLBITPLANE_1,BPLPOINTERS2
+        LOADBITPLANE #BALLBITPLANE_2,BPLPOINTERS2_1
+        LOADBITPLANE #BALLBITPLANE_3,BPLPOINTERS2_2
+	lea COLORSBITPLANE2,a1
+	move.w #$fff,2(a1)
+        move.w #$f00,6(a1)
+        move.w #$800,10(a1)
+	bchg.b #6,BPLCON2
+
+	addq #1,BannerCont
+.moveballs
+	bsr.w BobsClear
+	bsr.w BobsMove
+	bsr.w BobsNewPos
+	bsr.w BlitBobs
 	bra.s .nomovbanner
 	
 .continue
@@ -239,10 +309,10 @@ mouse
 	bsr.w MoveStars   ; Move the background stars
 	bsr.w mt_music
 	
-.loopend ; Wait to exit 288th row (for faster processors like 68040)
+.loopend ; Wait to exit vblank row (for faster processors like 68040)
 	move.l $dff004,d0
 	and.l #$1ff00,d0
-	cmp.l #288<<3,d0
+	cmp.l #303<<8,d0
 	beq.b .loopend
 
 	; wait for left mouse click
@@ -286,6 +356,552 @@ enddemo
 	ENABLE
 	clr.l d0
 	rts
+
+; Calculate distance between bobs
+ptBOBTabXY	dc.w	0
+BOBTabX		dc.w 0,10,20,30,40,50,60,70,80
+BOBTabY		dc.w 0,10,20,30,40,50,60,70,80
+
+BobsCoords
+	lea	BOBTabX(pc),a0
+	lea	BOBTabY(pc),a1
+	;adda.w	ptBOBTabXY(pc),a0
+	;adda.w	ptBOBTabXY(pc),a1
+	lea	X1,a2
+	lea	Y1,a3
+	move.w	nbBobs(pc),d5
+.loopbob1
+	move.w	(a0)+,(a2)+
+	move.w	(a1)+,(a3)+
+	dbf	d5,.loopbob1
+	rts
+
+waitblitter	
+	btst	#6,$dff002
+.wait	btst	#6,$dff002
+	bne.s	.wait
+	rts
+
+;  Update x and y position on the bobs data structure
+X1		ds.w	1 ; add bobs
+X2		ds.w	1
+X3		ds.w	1
+X4		ds.w	1
+X5		ds.w	1
+X6		ds.w	1
+X7		ds.w	1
+X8		ds.w	1
+X9		ds.w	1
+Y1		ds.w	1
+Y2		ds.w	1
+Y3		ds.w	1
+Y4		ds.w	1
+Y5		ds.w	1
+Y6		ds.w	1
+Y7		ds.w	1
+Y8		ds.w	1
+Y9		ds.w	1
+
+MoveX	dcb.w 3,260
+	dc.w 259, 258, 257, 256, 254, 252, 250,	248, 245, 243
+	dc.w 240, 236, 233, 230, 226, 222, 218,	214, 210, 205
+	dc.w 201, 196, 192, 187, 182, 177, 172,	167, 162, 157
+	dc.w 152, 147, 142, 137, 132, 128, 123,	118, 114, 110
+	dc.w 105, 101, 97, 93, 90, 86, 83, 80, 77, 74, 72, 70
+	dc.w 68, 66, 64, 63, 62, 61
+	dcb.w 4,60
+	dcb.w 2,61
+	dc.w 62, 63, 65, 66, 68, 70, 73, 75, 78, 81, 84, 87, 91
+	dc.w 95, 98, 103, 107, 111, 115, 120, 125, 129,	134, 139
+	dc.w 144, 149, 154, 159, 164, 169, 174,	179, 184, 188
+SWITCH1
+	dc.w 193, 198, 202, 207, 211, 215, 220,	223, 227, 231
+	dc.w 234, 238, 241, 243, 246, 249, 251,	253, 255, 256
+	dc.w 257, 258, 259
+	dcb.w 5,260
+	dc.w 259, 258, 257, 256, 254, 252, 250,	248, 245, 243
+	dc.w 240, 236, 233, 230, 226, 222, 218,	214, 210, 205
+	dc.w 201, 196, 192, 187, 182, 177, 172,	167, 162, 157
+	dc.w 152, 147, 142, 137, 132, 128, 123,	118, 114, 110
+	dc.w 105, 101, 97, 93, 90, 86, 83, 80, 77, 74, 72, 70
+	dc.w 68, 66, 64, 63, 62, 61
+	dcb.w 4,60
+	dcb.w 2,61
+	dc.w 62, 63, 65, 66, 68, 70, 73, 75, 78, 81, 84, 87, 91
+	dc.w 95, 98, 103, 107, 111, 115, 120, 125, 129,	134, 139
+	dc.w 144, 149, 154, 159, 164, 169, 174,	179, 184, 188
+SWITCH1_1
+	dc.w 193, 198, 202, 207, 211, 215, 220,	223, 227, 231
+	dc.w 234, 238, 241, 243, 246, 249, 251,	253, 255, 256
+	dc.w 257, 258, 259
+	dcb.w 5,260
+SWITCH2_1
+	dc.w 259, 258, 257, 256, 254, 252, 250,	248, 245, 243
+	dc.w 240, 236, 233, 230, 226, 222, 218,	214, 210, 205
+	dc.w 201, 196, 192, 187, 182, 177, 172,	167, 162, 157
+	dc.w 152, 147, 142, 137, 132, 128, 123,	118, 114, 110
+	dc.w 105, 101, 97, 93, 90, 86, 83, 80, 77, 74, 72, 70
+	dc.w 68, 66, 64, 63, 62, 61
+SWITCH1_2
+	dcb.w 4,60
+	dcb.w 2,61
+	dc.w 62, 63, 65, 66, 68, 70, 73, 75, 78, 81, 84, 87, 91
+	dc.w 95, 98, 103, 107, 111, 115, 120, 125, 129,	134, 139
+	dc.w 144, 149, 154, 159, 164, 169, 174,	179, 184, 188
+SWITCH2
+	dc.w 193, 198, 202, 207, 211, 215, 220,	223, 227, 231
+	dc.w 234, 238, 241, 243, 246, 249, 251,	253, 255, 256
+	dc.w 257, 258, 259
+SWITCH2_2
+	dcb.w 3,260
+	dc.w -1
+
+MoveY
+	dc.w 100, 102, 105, 107, 110, 112, 115,	117, 119, 122
+	dc.w 124, 126, 128, 130, 132, 134, 136,	138, 139, 141
+	dc.w 142, 143, 145, 146
+	dcb.w 2,147
+	dc.w 148
+	dcb.w 2,149
+	dcb.w 6,150
+	dcb.w 2,149
+	dc.w 148, 147, 146, 145, 144, 143, 142,	140, 139, 137
+	dc.w 136, 134, 132, 130, 128, 126, 124,	121, 119, 117
+	dc.w 114, 112, 110, 107, 105, 102, 100,	97, 95,	92, 90
+	dc.w 87, 85, 82, 80, 78, 76, 74, 71, 69, 67, 66, 64, 62
+	dc.w 61, 59, 58, 56, 55, 54, 53
+	dcb.w 2,52
+	dcb.w 2,51
+	dcb.w 6,50
+	dcb.w 2,51
+	dc.w 52, 53, 54, 55, 56, 57, 58, 60, 61, 63, 65, 67, 68
+	dc.w 70, 72, 75, 77, 79, 81, 84, 86, 88, 91, 93, 96, 98
+	dc.w 100, 102, 105, 107, 110, 112, 115,	117, 119, 122
+	dc.w 124, 126, 128, 130, 132, 134, 136,	138, 139, 141
+	dc.w 142, 143, 145, 146
+	dcb.w 2,147
+	dc.w 148
+	dcb.w 2,149
+	dcb.w 6,150
+	dcb.w 2,149
+	dc.w 148, 147, 146, 145, 144, 143, 142,	140, 139, 137
+	dc.w 136, 134, 132, 130, 128, 126, 124,	121, 119, 117
+	dc.w 114, 112, 110, 107, 105, 102, 100,	97, 95,	92, 90
+	dc.w 87, 85, 82, 80, 78, 76, 74, 71, 69, 67, 66, 64, 62
+	dc.w 61, 59, 58, 56, 55, 54, 53
+	dcb.w 2,52
+	dcb.w 2,51
+	dcb.w 6,50
+	dcb.w 2,51
+	dc.w 52, 53, 54, 55, 56, 57, 58, 60, 61, 63, 65, 67, 68
+	dc.w 70, 72, 75, 77, 79, 81, 84, 86, 88, 91, 93, 96, 98
+	dc.w 100, 105, 110, 115, 119, 124, 128,	132, 136, 139
+	dc.w 142, 145, 147, 148, 149
+	dcb.w 3,150
+	dc.w 149, 147, 145, 143, 140, 137, 134,	130, 126, 121
+	dc.w 117, 112, 107, 102, 97, 92, 87, 82, 78, 74, 69, 66
+	dc.w 62, 59, 56, 54, 52, 51
+	dcb.w 3,50
+	dc.w 51, 52, 54, 56, 58, 61, 65, 68, 72, 77, 81, 86, 91
+	dc.w 96, 101, 106, 111,	116, 120, 125, 129, 133, 136, 140
+	dc.w 143, 145, 147, 148, 149
+	dcb.w 2,150
+	dc.w 149, 148, 147, 145, 143, 140, 137,	133, 129, 125
+	dc.w 121, 116, 111, 106, 101, 96, 91, 86, 82, 77, 73, 69
+	dc.w 65, 62, 59, 56, 54, 52, 51
+	dcb.w 3,50
+	dc.w 51, 52, 54, 56, 59, 62, 65, 69, 73, 78, 82, 87, 92
+	dc.w 97, 98, -1
+
+BobsMove
+	lea	MoveX(pc),a2
+	lea	MoveY(pc),a3
+	lea	DataBobs(pc),a0
+	
+	lea	SWITCH1(pc),a4
+	lea	SWITCH2(pc),a6
+
+; iterate until moveX+counter different from -1 then reset
+.loop	addi.w	#2,X1
+	moveq #0,d0
+	move.w	X1,d0
+	
+	; If we are processing switch1 invert playfields
+	lea     MoveX(pc),a1
+	adda.l d0,a1
+	cmp.l  a4,a1
+	bne.w	.checkfromdxtosx
+	bchg.b #6,BPLCON2
+	; Change the skull jaw pasting data with the blitter - the jaw will be opened   
+        BLTCPY3 #JAWLCLOSED,#LEFTSKULLJAW,#(64*1)+56
+        BLTCPY3 #JAWRCLOSED,#RIGHTSKULLJAW,#(64*1)+56
+	bra.w .continue;
+
+; if the ball reaches the far left end than the crowman is on top
+.checkfromdxtosx
+	cmp.l  a6,a1
+	bne.w .checkfromsxtodx2
+
+	bchg.b #6,BPLCON2
+	
+	bra.w .continue
+
+.checkfromsxtodx2
+	cmp.l  #SWITCH1_1,a1
+	;bne.w .checkfromdxtosx2
+	bne.w .continue
+	bchg.b #6,BPLCON2
+	; Change the skull jaw pasting data with the blitter - the jaw will be opened   
+        BLTCPY3 #JAWLOPEN,#LEFTSKULLJAW,#(64*1)+56
+        BLTCPY3 #JAWROPEN,#RIGHTSKULLJAW,#(64*1)+56
+        bra.w .continue
+
+.checkfromdxtosx2
+        cmp.l  #SWITCH2_1,a1
+        bne.w .checkfromsxtodx3
+        bchg.b #6,BPLCON2
+        bra.w .continue
+
+.checkfromsxtodx3
+        cmp.l  #SWITCH1_2,a1
+        bne.w .checkfromdxtosx3
+        bchg.b #6,BPLCON2
+	; Change the skull jaw pasting data with the blitter - the jaw will be closed
+        BLTCPY3 #JAWLCLOSED,#LEFTSKULLJAW,#(64*1)+56
+        BLTCPY3 #JAWRCLOSED,#RIGHTSKULLJAW,#(64*1)+56
+        bra.w .continue
+
+.checkfromdxtosx3
+        cmp.l  #SWITCH2_1,a1
+        bne.w .continue
+        bchg.b #6,BPLCON2
+        bra.w .continue
+
+.continue
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx1
+	clr.w	X1
+	addq #1,BannerCont
+;	clr.w	flagChange
+;	move.w	#1,flagBobs2
+	bra.w	.loop
+
+; Bob number 1
+.nx1	move.w	(a2,d0.w),(a0) ; Set new X for Bob 1
+	
+.Y1	addi.w	#2,Y1
+	move.w	Y1,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny1
+	clr.w	Y1
+	bra.s	.Y1
+
+.ny1	move.w	(a3,d0.w),2(a0) ; Set new Y
+	lea	20(a0),a0	; Go to bob number 2
+	
+	; Bob number 2
+.x2	addi.w	#2,X2
+	move.w	X2,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx2
+	clr.w	X2
+	bra.s	.x2
+
+.nx2	move.w	(a2,d0.w),(a0) 	; Set new X for Bob 2
+
+.y2	addi.w	#2,Y2
+	move.w	Y2,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny2
+	clr.w	Y2
+	bra.s	.y2
+
+.ny2	move.w	(a3,d0.w),2(a0) ; Set new Y for Bob 1
+	lea	20(a0),a0
+	
+
+.x3	addi.w	#2,X3
+	move.w	X3,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx3
+	clr.w	X3
+	bra.s	.x3
+
+; Bob number 3
+.nx3	move.w	(a2,d0.w),(a0)
+
+.y3	addi.w	#2,Y3
+	move.w	Y3,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny3
+	clr.w	Y3
+	bra.s	.y3
+
+.ny3	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+; Bob number 4
+.x4	addi.w	#2,X4
+	move.w	X4,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx4
+	clr.w	X4
+	bra.s	.x4
+
+.nx4	
+	move.w	(a2,d0.w),(a0)
+.y4	addi.w	#2,Y4
+	move.w	Y4,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny4
+	clr.w	Y4
+	bra.s	.y4
+
+.ny4	
+	move.w	(a3,d0.w),2(a0)
+	lea     20(a0),a0
+	
+.x5	addi.w	#2,X5
+	move.w	X5,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx5
+	clr.w	X5
+	bra.s	.x5
+
+.nx5	move.w	(a2,d0.w),(a0)
+
+.y5	addi.w	#2,Y5
+	move.w	Y5,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny5
+	clr.w	Y5
+	bra.s	.y5
+
+.ny5	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+.x6	addi.w	#2,X6
+	move.w	X6,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx6
+	clr.w	X6
+	bra.s	.x6
+
+.nx6	move.w	(a2,d0.w),(a0)
+
+.y6	addi.w	#2,Y6
+	move.w	Y6,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny6
+	clr.w	Y6
+	bra.s	.y6
+
+.ny6	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+.x7	addi.w	#2,X7
+	move.w	X7,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx7
+	clr.w	X7
+	bra.s	.x7
+
+.nx7	move.w	(a2,d0.w),(a0)
+
+.y7	addi.w	#2,Y7
+	move.w	Y7,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny7
+	clr.w	Y7
+	bra.s	.y7
+
+.ny7	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+.x8	addi.w	#2,X8
+	move.w	X8,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx8
+	clr.w	X8
+	bra.s	.x8
+
+.nx8	move.w	(a2,d0.w),(a0)
+
+.y8	addi.w	#2,Y8
+	move.w	Y8,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny8
+	clr.w	Y8
+	bra.s	.y8
+
+.ny8	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+.x9	addi.w	#2,X9
+	move.w	X9,d0
+	cmpi.w	#-1,(a2,d0.w)
+	bne.s	.nx9
+	clr.w	X9
+	bra.s	.x9
+
+.nx9	move.w	(a2,d0.w),(a0)
+
+.y9	addi.w	#2,Y9
+	move.w	Y9,d0
+	cmpi.w	#-1,(a3,d0.w)
+	bne.s	.ny9
+	clr.w	Y9
+	bra.s	.y9
+
+.ny9	move.w	(a3,d0.w),2(a0)
+	lea	20(a0),a0
+
+
+	rts
+
+
+; Blit all bobs drawing the picture
+
+ball		ds.l	1
+ballmask	ds.l	1
+
+BlitBobs
+	lea	DataBobs(pc),a0 ; load the address of the bobs in a0
+	;bsr.w	waitblitter
+	;move.l	#$220022,$dff060 ; module for C and B channels at 34 ball
+	;move.l	#$220022,$dff064 ; module for A and D channels at 34 ball
+	move.l #$00220000,$dff060
+	move.l #$00000022,$dff064
+	move.w	nbBobs(pc),d6    ; for each bob
+.loopbobs
+	move.l	ball,4(a0)  ; load the bob pointer into the bobs data
+	move.l	ballmask,8(a0) ; load the mask pointer into the bobs data
+
+	; Copy bltcon0-1 from the bob to the blitter register
+	move.w	16(a0),d0
+	move.w	d0,$dff042
+	ori.w	#$fca,d0
+	move.w	d0,$dff040
+
+	; Copy the ball data address into a1
+	movea.l	4(a0),a1
+
+	; copy screen data address into a2
+	movea.l	12(a0),a2
+
+	moveq	#2-1,d5	; for each bitplane
+.loopbpl
+	move.l	8(a0),$dff050 	; A channel address (MASK)
+	move.l	a1,$dff04c    	; B channel address (ptBob)
+	move.l	a2,$dff048    	; C channel address  (Screen)
+	move.l	a2,$dff054    	; D channel address  (Dest Screen)
+	move.w	18(a0),$dff058	; Blit the ball!!!
+	bsr	waitblitter
+;	lea	40*256(a1),a1 ball
+	lea	32*6(a1),a1
+	lea	40*256(a2),a2
+	dbf	d5,.loopbpl
+
+	; go to next bob
+	lea	20(a0),a0
+	dbf	d6,.loopbobs
+	rts
+
+; Clear all bobs replacing the picture with zeros
+BobsClear
+
+	move.w #$FFFF,$dff044 ; BLTAFWM - Blitter first word mask for source A
+        move.w #$FFFF,$dff046 ; BLTALWM - Blitter last word mask for source A
+        move.w #$0000,$dff042 ; BLTCON1
+
+	lea	DataBobs(pc),a0 ; load the address of the bobs in a0
+	bsr.w	waitblitter     ; wait for the blitter to be available
+	move.w	#40-6,$dff066   ; set blitter module for channel D to 34 (1 row 40 bytes - bob width 3 words aka 6 bytes)
+
+	move.w	nbBobs(pc),d6   ; for each bob
+.loopbobs
+	move.w	#$100,$dff040   ; set bltcon0 to use source 'D' and no minterms (to force zeroing the memory)
+	move.l	12(a0),d1	; calculate destination address on the screen
+
+	moveq	#2-1,d5		; for each bitplane 
+.loopbpl
+	move.l	d1,$dff054	; set channel D address for the blitter
+	move.w	18(a0),$dff058	; BLIT!!!!! the bltsize is at databobs+18
+	bsr.w	waitblitter
+
+	; get address of the next bitplane
+	addi.l	#40*256,d1
+	dbf	d5,.loopbpl ; end of foreach bitplane loop
+
+
+	lea	20(a0),a0
+	dbf	d6,.loopbobs ; end of foreach bob loop
+
+	rts
+	
+BobsNewPos
+	lea	DataBobs(pc),a0 ; load the address of the bobs in a0
+	move.w	nbBobs(pc),d5   ; for each bob
+.loopbobs
+	; Get the y screen position multiplying by 40 the y value of each
+	; databob
+;	lea	PIC,a1 ball2
+	lea	BALLBITPLANE_1,a1
+	move.w	2(a0),d0
+	mulu.w	#40,d0
+	add.w	d0,a1 ; a1 now holds the screen position at row 'y'
+
+	
+	move.w	(a0),d0
+	asl.w	#4,d0
+	move.w	d0,d1
+	asr.w	#7,d0
+	adda.w	d0,a1 ; a1 now holds the screen position at row 'y' and	colum 'x'
+
+	move.l	a1,12(a0) ; Store the new screen address into the bob at byte 12
+
+	; Stores information for  bltcon0 and bltcon1 (shift bits and
+	; ascending / discending mode 
+	asl.w	#8,d1
+	move.w	d1,16(a0)
+
+	; go to next bob
+	lea	20(a0),a0
+	dbf	d5,.loopbobs
+	rts
+
+nbBobs	dc.w	8-1 ; add bobs
+DataBobs
+	dc.w 100,128	; x,y
+	dc.l ballpic
+	dc.l ballpicmsk
+	dc.l BALLBITPLANE_1
+	dc.w 0
+	dc.w 32*64+6/2	; bltsize
+	
+	dc.w 140,128	; x,y
+	dc.l ballpic	; $26192
+	dc.l ballpicmsk
+;	dc.l PIC	ball2
+	dc.l BALLBITPLANE_1
+	dc.w 0
+	dc.w 32*64+6/2	; bltsize
+
+	dc.w 180,128    ; x,y
+        dc.l ballpic    ; $26192
+        dc.l ballpicmsk
+;       dc.l PIC        ball2
+        dc.l BALLBITPLANE_1
+        dc.w 0
+        dc.w 32*64+6/2  ; bltsize
+
+	BALLOBJ ; Bob 4
+	BALLOBJ ; Bob 5
+	BALLOBJ ; Bob 6
+	BALLOBJ ; Bob 7
+	BALLOBJ ; Bob 8
+	BALLOBJ ; Bob 9  
+
 	
 InitBITCHKBOARD
 	LOADBITPLANE #CHECKER_RAW_1,BPLPOINTERS2
@@ -630,6 +1246,9 @@ SetupCreditScene
 	move.w #$555,18(a1)
 	move.w #$bbb,22(a1)
 	move.w #$666,26(a1)
+	
+	; Clear bitplanes
+	BLTCLEAR #BALLBITPLANE_1,#BALLBITPLANE_1,#$c014
 
 	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1
 	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1_1 
@@ -1265,7 +1884,9 @@ SpritePointers	dc.w $120,$0000,$122,$0000,$124,$0000,$126,$0000,$128,$0000
 		dc.w	$92,$0038
 		dc.w	$94,$00d0
 		dc.w	$102,0
-		dc.w	$104,$0009 	; replace $0009 here with $0039 to print the banner OVER the image (exploiting a well known bug
+		dc.w	$104
+		dc.b	$00
+BPLCON2		dc.b	$09 	; replace $0009 here with $0039 to print the banner OVER the image (exploiting a well known bug
 				   	; that lets you print color 16 where in the fifth bitplane there's a 1 - works only on ocs/ecs (A500/A600)
 		dc.w	$108,0
 		dc.w	$10a,0
@@ -1340,13 +1961,17 @@ COLORSBITPLANE2
 		
 		; text gradient
 		dc.w	$3107,$FFFE
+TXTGRADCOL1
 		dc.w    $182,$009
 		dc.w	$3607,$FFFE
+TXTGRADCOL2
 		dc.w    $182,$06f
 		dc.w	$3b07,$FFFE
+TXTGRADCOL3
 		dc.w    $182,$0af
 		
 		dc.w	$4a07,$FFFE  ; Wait to differentiate color of the text
+TXTGRADCOL4		
 		dc.w    $182,$000    ; color1
 		
 ; CHECKBOARD START
@@ -1763,8 +2388,11 @@ SCREEN_2
     dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
     
     dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+BALLBITPLANE_1
     dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+BALLBITPLANE_2
     dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
+BALLBITPLANE_3
     dcb.b _SCREEN_HBYTES*_SCREEN_VRES,$00
 SCREEN_3
 
@@ -1841,5 +2469,9 @@ WSTART
     dc.b 'AT AMIGAPAGE.IT     '
     dc.b '                    '
     dc.b 'THANKS FOR WATCHING '
+    
+ballpic	incbin "ballbrush.raw"
+ballpicmsk incbin "ballbrush.msk"
+
 
 	end
