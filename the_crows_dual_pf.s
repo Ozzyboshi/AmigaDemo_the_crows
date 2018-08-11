@@ -767,9 +767,7 @@ ballmask	ds.l	1
 
 BlitBobs
 	lea	DataBobs(pc),a0 ; load the address of the bobs in a0
-	;bsr.w	waitblitter
-	;move.l	#$220022,$dff060 ; module for C and B channels at 34 ball
-	;move.l	#$220022,$dff064 ; module for A and D channels at 34 ball
+	bsr.w	waitblitter
 	move.l #$00220000,$dff060
 	move.l #$00000022,$dff064
 	move.w	nbBobs(pc),d6    ; for each bob
@@ -797,7 +795,6 @@ BlitBobs
 	move.l	a2,$dff054    	; D channel address  (Dest Screen)
 	move.w	18(a0),$dff058	; Blit the ball!!!
 	bsr	waitblitter
-;	lea	40*256(a1),a1 ball
 	lea	32*6(a1),a1
 	lea	40*256(a2),a2
 	dbf	d5,.loopbpl
@@ -845,13 +842,11 @@ BobsNewPos
 .loopbobs
 	; Get the y screen position multiplying by 40 the y value of each
 	; databob
-;	lea	PIC,a1 ball2
 	lea	BALLBITPLANE_1,a1
 	move.w	2(a0),d0
 	mulu.w	#40,d0
 	add.w	d0,a1 ; a1 now holds the screen position at row 'y'
 
-	
 	move.w	(a0),d0
 	asl.w	#4,d0
 	move.w	d0,d1
@@ -870,31 +865,12 @@ BobsNewPos
 	dbf	d5,.loopbobs
 	rts
 
-nbBobs	dc.w	8-1 ; add bobs
+nbBobs	dc.w	9-1 ; add bobs
 DataBobs
-	dc.w 100,128	; x,y
-	dc.l ballpic
-	dc.l ballpicmsk
-	dc.l BALLBITPLANE_1
-	dc.w 0
-	dc.w 32*64+6/2	; bltsize
 	
-	dc.w 140,128	; x,y
-	dc.l ballpic	; $26192
-	dc.l ballpicmsk
-;	dc.l PIC	ball2
-	dc.l BALLBITPLANE_1
-	dc.w 0
-	dc.w 32*64+6/2	; bltsize
-
-	dc.w 180,128    ; x,y
-        dc.l ballpic    ; $26192
-        dc.l ballpicmsk
-;       dc.l PIC        ball2
-        dc.l BALLBITPLANE_1
-        dc.w 0
-        dc.w 32*64+6/2  ; bltsize
-
+	BALLOBJ ; Bob 1
+	BALLOBJ ; Bob 2
+	BALLOBJ ; Bob 3
 	BALLOBJ ; Bob 4
 	BALLOBJ ; Bob 5
 	BALLOBJ ; Bob 6
@@ -915,11 +891,7 @@ InitBITCHKBOARD
 InitCheckboard
 	move.l #$2000,dirposChecker
 	bsr.w initCheckerH
-	;lea CHECKER_RAW_3+40*128,a0
-	;move.w #40*158-1,d0
-;.fill	move.b #-1,(a0)+
-;	dbf d0,.fill
-	
+		
 initCheckerH
 	lea	BufHL(pc),a0
 	move.w	#768,d4
@@ -1249,6 +1221,8 @@ SetupCreditScene
 	
 	; Clear bitplanes
 	BLTCLEAR #BALLBITPLANE_1,#BALLBITPLANE_1,#$c014
+	
+	bclr.b #6,BPLCON2	; Force crow on background
 
 	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1
 	LOADBITPLANE #GREETINGS_SCREEN2,BPLPOINTERS1_1 
